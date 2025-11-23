@@ -1,0 +1,229 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+
+    // Check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Check if user is the owner of the document
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Check if user has a specific role
+    function hasRole(role) {
+      return isSignedIn() &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    // Check if user is 18+ (for chat eligibility)
+    function isAdult() {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      let birthDate = user.dateOfBirth;
+
+      // If no birth date, assume adult (tutors, parents, admins)
+      return birthDate == null ||
+             (request.time.toMillis() - birthDate.toMillis()) >= 568024668000; // 18 years in milliseconds
+    }
+
+    // Check if user is a parent of the specified student
+    function isParentOfStudent(studentId) {
+      let parentData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return hasRole('parent') && studentId in parentData.childrenIds;
+    }
+
+    // Check if user is involved in a booking (student or tutor)
+    function isBookingParticipant(bookingData) {
+      return bookingData.studentId == request.auth.uid ||
+             bookingData.tutorId == request.auth.uid;
+    }
+
+    // ============================================
+    // USERS COLLECTION
+    // ============================================
+    match /users/{userId} {
+      // Anyone can create their own user document during registration
+      allow create: if isSignedIn() && isOwner(userId);
+
+      // Users can read their own profile
+      // Parents can read their children's profiles
+      // Admins can read all profiles
+      allow read: if isSignedIn() && (
+        isOwner(userId) ||
+        hasRole('admin') ||
+        isParentOfStudent(userId)
+      );
+
+      // Users can update their own profile
+      // Admins can update any profile
+      allow update: if isSignedIn() && (
+        isOwner(userId) ||
+        hasRole('admin')
+      );
+
+      // Only admins can delete users
+      allow delete: if hasRole('admin');
+    }
+
+    // ============================================
+    // BOOKINGS COLLECTION
+    // ============================================
+    match /bookings/{bookingId} {
+      // Students can create bookings
+      allow create: if isSignedIn() && hasRole('student');
+
+      // Read access:
+      // - Students can read their own bookings
+      // - Tutors can read bookings assigned to them
+      // - Parents can read their children's bookings
+      // - Admins can read all bookings
+      allow read: if isSignedIn() && (
+        resource.data.studentId == request.auth.uid ||
+        resource.data.tutorId == request.auth.uid ||
+        hasRole('admin') ||
+        isParentOfStudent(resource.data.studentId)
+      );
+
+      // Update access:
+      // - Tutors can update bookings assigned to them (accept/decline, add lesson report)
+      // - Students can update their own bookings (cancel)
+      // - Admins can update any booking
+      allow update: if isSignedIn() && (
+        resource.data.tutorId == request.auth.uid ||
+        resource.data.studentId == request.auth.uid ||
+        hasRole('admin')
+      );
+
+      // Only admins can delete bookings
+      allow delete: if hasRole('admin');
+    }
+
+    // ============================================
+    // CONVERSATIONS COLLECTION
+    // ============================================
+    match /conversations/{conversationId} {
+      // Users can create conversations
+      allow create: if isSignedIn();
+
+      // Users can read conversations they're a participant in
+      allow read: if isSignedIn() &&
+                     request.auth.uid in resource.data.participantIds;
+
+      // Users can update conversations they're part of (for unread counts, last message)
+      allow update: if isSignedIn() &&
+                       request.auth.uid in resource.data.participantIds;
+
+      // No one can delete conversations (or only admins)
+      allow delete: if hasRole('admin');
+
+      // ============================================
+      // MESSAGES SUBCOLLECTION
+      // ============================================
+      match /messages/{messageId} {
+        // Users can read messages in conversations they're part of
+        allow read: if isSignedIn() &&
+                       request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+
+        // Users can send messages if:
+        // - They're a participant in the conversation
+        // - AND they're either a tutor, parent, or an adult student (18+)
+        allow create: if isSignedIn() &&
+                         request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds &&
+                         (hasRole('tutor') || hasRole('parent') || hasRole('admin') || (hasRole('student') && isAdult()));
+
+        // Users can update their own messages (mark as read)
+        allow update: if isSignedIn() &&
+                         request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+
+        // Only admins can delete messages
+        allow delete: if hasRole('admin');
+      }
+    }
+
+    // ============================================
+    // RESOURCES COLLECTION
+    // ============================================
+    match /resources/{resourceId} {
+      // All authenticated users can read resources
+      // (Further filtering by isPublic, studentIds done at application level)
+      allow read: if isSignedIn();
+
+      // Tutors and admins can create resources
+      allow create: if isSignedIn() && (hasRole('tutor') || hasRole('admin'));
+
+      // Tutors can update their own resources
+      // Admins can update any resource
+      allow update: if isSignedIn() && (
+        (hasRole('tutor') && resource.data.uploadedBy == request.auth.uid) ||
+        hasRole('admin')
+      );
+
+      // Only admins can delete resources
+      allow delete: if hasRole('admin');
+    }
+
+    // ============================================
+    // TUTOR AVAILABILITY COLLECTION
+    // ============================================
+    match /tutor_availability/{availabilityId} {
+      // All authenticated users can read availability (for booking)
+      allow read: if isSignedIn();
+
+      // Tutors can create/update their own availability
+      // Admins can manage any tutor's availability
+      allow write: if isSignedIn() && (
+        (hasRole('tutor') && availabilityId == request.auth.uid) ||
+        hasRole('admin')
+      );
+
+      // Only admins can delete availability
+      allow delete: if hasRole('admin');
+    }
+
+    // ============================================
+    // SCHOOLS COLLECTION
+    // ============================================
+    match /schools/{schoolId} {
+      // Only admins can read/write school data
+      allow read: if hasRole('admin');
+      allow write: if hasRole('admin');
+    }
+
+    // ============================================
+    // SYLLABUS PROGRESS COLLECTION (Phase 2)
+    // ============================================
+    match /syllabus_progress/{progressId} {
+      // Students can read their own progress
+      // Parents can read their children's progress
+      // Tutors can read progress for their students
+      // Admins can read all progress
+      allow read: if isSignedIn() && (
+        resource.data.studentId == request.auth.uid ||
+        hasRole('admin') ||
+        isParentOfStudent(resource.data.studentId) ||
+        hasRole('tutor')
+      );
+
+      // Tutors can update progress (after lessons)
+      // Admins can update any progress
+      allow write: if isSignedIn() && (hasRole('tutor') || hasRole('admin'));
+
+      // Only admins can delete progress
+      allow delete: if hasRole('admin');
+    }
+
+    // ============================================
+    // DEFAULT DENY
+    // ============================================
+    // Any collection not explicitly allowed above is denied
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

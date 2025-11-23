@@ -1,0 +1,174 @@
+import { db } from '../config/firebase'
+import { logger } from '../config/logger'
+import { Booking, CreateBookingInput, AcceptBookingInput, DeclineBookingInput, SubmitLessonReportInput } from '../types/booking'
+import { ApiError } from '../middleware/errorHandler'
+import { FieldValue } from 'firebase-admin/firestore'
+
+/**
+ * Create a new booking request
+ */
+export const createBooking = async (input: CreateBookingInput): Promise<Booking> => {
+  const bookingRef = db.collection('bookings').doc()
+
+  const booking: Booking = {
+    id: bookingRef.id,
+    studentId: input.studentId,
+    tutorId: input.tutorId,
+    subject: input.subject,
+    level: input.level,
+    scheduledAt: FieldValue.serverTimestamp() as any, // Will be set to actual date
+    duration: input.duration || 60,
+    status: 'pending',
+    price: input.price,
+    isPaid: false,
+    createdAt: FieldValue.serverTimestamp() as any,
+    updatedAt: FieldValue.serverTimestamp() as any,
+  }
+
+  // Set the actual scheduled time
+  await bookingRef.set({
+    ...booking,
+    scheduledAt: input.scheduledAt,
+  })
+
+  logger.info(`Booking created: ${bookingRef.id}`, {
+    studentId: input.studentId,
+    tutorId: input.tutorId,
+  })
+
+  return { ...booking, scheduledAt: input.scheduledAt as any }
+}
+
+/**
+ * Get booking by ID
+ */
+export const getBookingById = async (bookingId: string): Promise<Booking> => {
+  const bookingDoc = await db.collection('bookings').doc(bookingId).get()
+
+  if (!bookingDoc.exists) {
+    throw new ApiError('Booking not found', 404)
+  }
+
+  return bookingDoc.data() as Booking
+}
+
+/**
+ * Get bookings for a user (student or tutor)
+ */
+export const getUserBookings = async (
+  userId: string,
+  role: 'student' | 'tutor'
+): Promise<Booking[]> => {
+  const field = role === 'student' ? 'studentId' : 'tutorId'
+  const snapshot = await db
+    .collection('bookings')
+    .where(field, '==', userId)
+    .orderBy('scheduledAt', 'desc')
+    .get()
+
+  return snapshot.docs.map((doc) => doc.data() as Booking)
+}
+
+/**
+ * Accept a booking request
+ */
+export const acceptBooking = async (input: AcceptBookingInput): Promise<void> => {
+  const bookingRef = db.collection('bookings').doc(input.bookingId)
+  const booking = await bookingRef.get()
+
+  if (!booking.exists) {
+    throw new ApiError('Booking not found', 404)
+  }
+
+  const bookingData = booking.data() as Booking
+
+  if (bookingData.tutorId !== input.tutorId) {
+    throw new ApiError('Unauthorized', 403)
+  }
+
+  if (bookingData.status !== 'pending') {
+    throw new ApiError('Booking is not in pending status', 400)
+  }
+
+  await bookingRef.update({
+    status: 'confirmed',
+    meetingLink: input.meetingLink,
+    updatedAt: FieldValue.serverTimestamp(),
+  })
+
+  logger.info(`Booking accepted: ${input.bookingId}`, {
+    tutorId: input.tutorId,
+  })
+}
+
+/**
+ * Decline a booking request
+ */
+export const declineBooking = async (input: DeclineBookingInput): Promise<void> => {
+  const bookingRef = db.collection('bookings').doc(input.bookingId)
+  const booking = await bookingRef.get()
+
+  if (!booking.exists) {
+    throw new ApiError('Booking not found', 404)
+  }
+
+  const bookingData = booking.data() as Booking
+
+  if (bookingData.tutorId !== input.tutorId) {
+    throw new ApiError('Unauthorized', 403)
+  }
+
+  if (bookingData.status !== 'pending') {
+    throw new ApiError('Booking is not in pending status', 400)
+  }
+
+  await bookingRef.update({
+    status: 'declined',
+    declineReason: input.reason,
+    updatedAt: FieldValue.serverTimestamp(),
+  })
+
+  logger.info(`Booking declined: ${input.bookingId}`, {
+    tutorId: input.tutorId,
+    reason: input.reason,
+  })
+}
+
+/**
+ * Submit lesson report
+ */
+export const submitLessonReport = async (
+  input: SubmitLessonReportInput
+): Promise<void> => {
+  const bookingRef = db.collection('bookings').doc(input.bookingId)
+  const booking = await bookingRef.get()
+
+  if (!booking.exists) {
+    throw new ApiError('Booking not found', 404)
+  }
+
+  await bookingRef.update({
+    lessonReport: {
+      topicsCovered: input.topicsCovered,
+      homework: input.homework,
+      notes: input.notes,
+      completedAt: FieldValue.serverTimestamp(),
+    },
+    status: 'completed',
+    updatedAt: FieldValue.serverTimestamp(),
+  })
+
+  logger.info(`Lesson report submitted: ${input.bookingId}`)
+}
+
+/**
+ * Get all bookings (admin only)
+ */
+export const getAllBookings = async (): Promise<Booking[]> => {
+  const snapshot = await db
+    .collection('bookings')
+    .orderBy('scheduledAt', 'desc')
+    .get()
+
+  return snapshot.docs.map((doc) => doc.data() as Booking)
+}

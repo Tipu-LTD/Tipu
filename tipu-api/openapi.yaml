@@ -1,0 +1,1488 @@
+openapi: 3.0.0
+info:
+  title: TIPU Academy API
+  version: 1.0.0
+  description: Online tutoring platform API with Firebase and Stripe integration
+  contact:
+    name: TIPU Academy Team
+    email: support@tipuacademy.com
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8888
+    description: Development server
+  - url: https://api.tipuacademy.com
+    description: Production server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Firebase JWT authentication token
+
+  schemas:
+    User:
+      type: object
+      required:
+        - uid
+        - email
+        - displayName
+        - role
+      properties:
+        uid:
+          type: string
+          description: Firebase Auth user ID
+          example: abc123xyz789
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: student@example.com
+        displayName:
+          type: string
+          description: User full name
+          minLength: 2
+          maxLength: 100
+          example: John Smith
+        role:
+          type: string
+          enum:
+            - student
+            - tutor
+            - parent
+            - admin
+          description: User role in the system
+          example: student
+        photoURL:
+          type: string
+          format: uri
+          description: Profile photo URL
+          example: https://example.com/photo.jpg
+        dateOfBirth:
+          type: string
+          format: date-time
+          description: Date of birth (for 18+ chat eligibility)
+          example: "2005-06-15T00:00:00Z"
+        parentId:
+          type: string
+          description: Parent user ID (for students under 18)
+          example: parent123
+        subjects:
+          type: array
+          items:
+            type: string
+            enum:
+              - Maths
+              - Physics
+              - Computer Science
+              - Python
+          description: Subjects (for tutors)
+          example:
+            - Maths
+            - Physics
+        bio:
+          type: string
+          description: Tutor biography
+          maxLength: 1000
+          example: Experienced Maths tutor with 10+ years...
+        isApproved:
+          type: boolean
+          description: Admin approval status (for tutors)
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+          example: "2025-01-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2025-01-20T14:20:00Z"
+
+    Booking:
+      type: object
+      required:
+        - id
+        - studentId
+        - tutorId
+        - subject
+        - level
+        - scheduledAt
+        - status
+        - price
+      properties:
+        id:
+          type: string
+          description: Booking ID
+          example: booking123
+        studentId:
+          type: string
+          description: Student user ID
+          example: student123
+        tutorId:
+          type: string
+          description: Tutor user ID
+          example: tutor123
+        subject:
+          type: string
+          enum:
+            - Maths
+            - Physics
+            - Computer Science
+            - Python
+          description: Subject being taught
+          example: Maths
+        level:
+          type: string
+          enum:
+            - GCSE
+            - A-Level
+          description: Education level
+          example: GCSE
+        scheduledAt:
+          type: string
+          format: date-time
+          description: Session date and time
+          example: "2025-11-23T10:00:00Z"
+        duration:
+          type: number
+          description: Session duration in minutes
+          minimum: 15
+          maximum: 180
+          default: 60
+          example: 60
+        status:
+          type: string
+          enum:
+            - pending
+            - confirmed
+            - completed
+            - cancelled
+            - declined
+          description: Booking status
+          example: confirmed
+        price:
+          type: number
+          description: Price in pence (£45.00 = 4500)
+          minimum: 0
+          example: 4500
+        isPaid:
+          type: boolean
+          description: Payment status
+          example: true
+        paymentIntentId:
+          type: string
+          description: Stripe Payment Intent ID
+          example: pi_123456789
+        meetingLink:
+          type: string
+          format: uri
+          description: Zoom/Google Meet URL
+          example: https://zoom.us/j/123456789
+        recordingUrl:
+          type: string
+          format: uri
+          description: Session recording URL
+          example: https://storage.googleapis.com/recordings/session123.mp4
+        lessonReport:
+          type: object
+          properties:
+            topicsCovered:
+              type: string
+              description: Topics covered in the lesson
+              example: Quadratic equations, factorization
+            homework:
+              type: string
+              description: Homework assigned
+              example: Complete exercises 1-10 on page 45
+            notes:
+              type: string
+              description: Additional notes
+              example: Student is progressing well
+            completedAt:
+              type: string
+              format: date-time
+              example: "2025-11-23T11:00:00Z"
+        declineReason:
+          type: string
+          description: Reason for declining (if applicable)
+          example: Schedule conflict
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-11-20T14:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-11-21T09:15:00Z"
+
+    Message:
+      type: object
+      required:
+        - id
+        - senderId
+        - text
+        - timestamp
+      properties:
+        id:
+          type: string
+          description: Message ID
+          example: msg123
+        senderId:
+          type: string
+          description: Sender user ID
+          example: user123
+        text:
+          type: string
+          description: Message text
+          minLength: 1
+          maxLength: 5000
+          example: Hello, when is our next session?
+        fileUrl:
+          type: string
+          format: uri
+          description: Attached file URL (homework, documents)
+          example: https://storage.googleapis.com/files/homework.pdf
+        timestamp:
+          type: string
+          format: date-time
+          description: Message timestamp
+          example: "2025-11-23T10:30:00Z"
+        read:
+          type: boolean
+          description: Read status
+          example: false
+
+    Conversation:
+      type: object
+      required:
+        - id
+        - participantIds
+      properties:
+        id:
+          type: string
+          description: Conversation ID
+          example: conv123
+        participantIds:
+          type: array
+          items:
+            type: string
+          description: Array of participant user IDs
+          minItems: 2
+          maxItems: 2
+          example:
+            - student123
+            - tutor456
+        lastMessage:
+          type: object
+          properties:
+            text:
+              type: string
+              example: Thanks for the session!
+            senderId:
+              type: string
+              example: student123
+            timestamp:
+              type: string
+              format: date-time
+              example: "2025-11-23T10:45:00Z"
+        unreadCount:
+          type: object
+          description: Unread message count per user
+          additionalProperties:
+            type: number
+          example:
+            student123: 0
+            tutor456: 2
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-11-20T09:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-11-23T10:45:00Z"
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Payment ID
+          example: pay123
+        bookingId:
+          type: string
+          description: Associated booking ID
+          example: booking123
+        amount:
+          type: number
+          description: Amount in pence
+          minimum: 0
+          example: 4500
+        currency:
+          type: string
+          description: Currency code
+          default: gbp
+          example: gbp
+        status:
+          type: string
+          enum:
+            - pending
+            - succeeded
+            - failed
+            - refunded
+          description: Payment status
+          example: succeeded
+        paymentIntentId:
+          type: string
+          description: Stripe Payment Intent ID
+          example: pi_123456789
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-11-23T10:00:00Z"
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: Resource not found
+        message:
+          type: string
+          description: Detailed error message
+          example: The requested booking does not exist
+        code:
+          type: string
+          description: Error code
+          example: BOOKING_NOT_FOUND
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check endpoint
+      description: Check API status and connectivity
+      security: []
+      responses:
+        "200":
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /v1/auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      description: |
+        Create user profile in Firestore after successful Firebase Authentication signup.
+
+        **Workflow:**
+        1. User signs up with Firebase Auth (frontend)
+        2. Frontend receives Firebase UID
+        3. Frontend calls this endpoint to create user profile in database
+
+        **Note:** This endpoint does not require authentication as it's called immediately after Firebase Auth signup.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - uid
+                - email
+                - displayName
+                - role
+              properties:
+                uid:
+                  type: string
+                  description: Firebase Authentication UID (from Firebase Auth)
+                  example: abc123xyz789
+                email:
+                  type: string
+                  format: email
+                  description: User email address
+                  example: student@example.com
+                displayName:
+                  type: string
+                  description: User full name
+                  minLength: 2
+                  maxLength: 100
+                  example: John Smith
+                role:
+                  type: string
+                  enum:
+                    - student
+                    - tutor
+                    - parent
+                    - admin
+                  description: User role in the platform
+                  example: student
+                dateOfBirth:
+                  type: string
+                  format: date-time
+                  description: Date of birth (required for students to determine 18+ chat eligibility)
+                  example: "2005-06-15T00:00:00Z"
+                parentId:
+                  type: string
+                  description: Parent user ID (required for students under 18)
+                  example: parent123
+      responses:
+        "201":
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+                  message:
+                    type: string
+                    example: User registered successfully
+        "400":
+          description: Validation error - Missing required fields or invalid data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Conflict - User with this UID already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user profile
+      description: |
+        Retrieve the authenticated user's complete profile information.
+
+        This endpoint is commonly used to:
+        - Verify authentication status
+        - Load user data on app initialization
+        - Check user role and permissions
+        - Display user information in the UI
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+              example:
+                user:
+                  uid: abc123xyz789
+                  email: student@example.com
+                  displayName: John Smith
+                  role: student
+                  dateOfBirth: "2005-06-15T00:00:00Z"
+                  createdAt: "2025-01-15T10:30:00Z"
+                  updatedAt: "2025-01-20T14:20:00Z"
+        "401":
+          description: Unauthorized - No valid JWT token provided or token expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User not found - Profile does not exist in database
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/bookings:
+    post:
+      tags:
+        - Bookings
+      summary: Create new booking request
+      description: Student creates a new tutoring session booking request. Tutor must accept before session is confirmed.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tutorId
+                - subject
+                - level
+                - scheduledAt
+                - price
+              properties:
+                tutorId:
+                  type: string
+                  description: ID of the tutor to book
+                  example: tutor123
+                subject:
+                  type: string
+                  enum:
+                    - Maths
+                    - Physics
+                    - Computer Science
+                    - Python
+                  description: Subject to be taught
+                  example: Maths
+                level:
+                  type: string
+                  enum:
+                    - GCSE
+                    - A-Level
+                  description: Education level
+                  example: GCSE
+                scheduledAt:
+                  type: string
+                  format: date-time
+                  description: Requested session date and time
+                  example: "2025-11-23T10:00:00Z"
+                price:
+                  type: number
+                  description: Price in pence (£45.00 = 4500)
+                  minimum: 0
+                  example: 4500
+                duration:
+                  type: number
+                  description: Session duration in minutes
+                  minimum: 15
+                  maximum: 180
+                  default: 60
+                  example: 60
+      responses:
+        "201":
+          description: Booking created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized - No valid JWT token provided
+        "404":
+          description: Tutor not found
+
+    get:
+      tags:
+        - Bookings
+      summary: Get user's bookings
+      description: Retrieve bookings for the authenticated user. Students see their bookings, tutors see bookings assigned to them.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum:
+              - pending
+              - confirmed
+              - completed
+              - cancelled
+              - declined
+          description: Filter by booking status
+          example: confirmed
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of bookings to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of bookings to skip (for pagination)
+      responses:
+        "200":
+          description: Bookings retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Booking"
+              example:
+                bookings:
+                  - id: booking123
+                    studentId: student123
+                    tutorId: tutor456
+                    subject: Maths
+                    level: GCSE
+                    status: confirmed
+                    price: 4500
+                    scheduledAt: "2025-11-23T10:00:00Z"
+        "401":
+          description: Unauthorized
+
+  /v1/bookings/{id}:
+    get:
+      tags:
+        - Bookings
+      summary: Get booking details
+      description: Retrieve detailed information about a specific booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Booking ID
+          example: booking123
+      responses:
+        "200":
+          description: Booking details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Booking not found
+
+  /v1/bookings/{id}/accept:
+    post:
+      tags:
+        - Bookings
+      summary: Accept booking request (Tutor only)
+      description: Tutor accepts a booking request and provides the meeting link for the session
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Booking ID to accept
+          example: booking123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - meetingLink
+              properties:
+                meetingLink:
+                  type: string
+                  format: uri
+                  description: Zoom, Google Meet, or other video call URL
+                  example: https://zoom.us/j/123456789
+      responses:
+        "200":
+          description: Booking accepted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Booking accepted successfully
+        "400":
+          description: Invalid meeting link or booking already accepted
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden - User is not the assigned tutor
+        "404":
+          description: Booking not found
+
+  /v1/bookings/{id}/decline:
+    post:
+      tags:
+        - Bookings
+      summary: Decline booking request (Tutor only)
+      description: Tutor declines a booking request. The system will notify other tutors for the subject.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Booking ID to decline
+          example: booking123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  description: Reason for declining the booking
+                  minLength: 3
+                  maxLength: 500
+                  example: Schedule conflict - already booked at this time
+      responses:
+        "200":
+          description: Booking declined successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Booking declined
+        "400":
+          description: Invalid reason or booking already declined
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden - User is not the assigned tutor
+        "404":
+          description: Booking not found
+
+  /v1/bookings/{id}/lesson-report:
+    post:
+      tags:
+        - Bookings
+      summary: Submit lesson report (Tutor only)
+      description: Tutor submits a detailed report after completing a session, including topics covered, homework, and notes
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Booking ID
+          example: booking123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - topicsCovered
+              properties:
+                topicsCovered:
+                  type: string
+                  description: Topics and concepts covered in the lesson
+                  minLength: 10
+                  maxLength: 2000
+                  example: Quadratic equations, factorization methods, completing the square
+                homework:
+                  type: string
+                  description: Homework assignments given to the student
+                  maxLength: 1000
+                  example: Complete exercises 1-10 on page 45, practice factoring problems
+                notes:
+                  type: string
+                  description: Additional notes about student progress or concerns
+                  maxLength: 1000
+                  example: Student is progressing well, showed good understanding of the concepts
+      responses:
+        "200":
+          description: Lesson report submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Lesson report submitted successfully
+        "400":
+          description: Invalid report data or session not completed
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden - User is not the assigned tutor
+        "404":
+          description: Booking not found
+
+  /v1/payments/create-intent:
+    post:
+      tags:
+        - Payments
+      summary: Create Stripe Payment Intent
+      description: Create a payment intent for a booking. Returns client secret for Stripe.js on frontend.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - bookingId
+                - amount
+              properties:
+                bookingId:
+                  type: string
+                  description: ID of the booking to pay for
+                  example: booking123
+                amount:
+                  type: number
+                  description: Amount in pence (£45.00 = 4500)
+                  minimum: 100
+                  example: 4500
+                currency:
+                  type: string
+                  description: Currency code
+                  default: gbp
+                  enum:
+                    - gbp
+                  example: gbp
+      responses:
+        "200":
+          description: Payment intent created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clientSecret:
+                    type: string
+                    description: Stripe client secret for frontend
+                    example: pi_123_secret_456
+                  paymentIntentId:
+                    type: string
+                    description: Stripe Payment Intent ID
+                    example: pi_123456789
+        "400":
+          description: Invalid booking ID or amount
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Booking not found
+
+  /v1/payments/history:
+    get:
+      tags:
+        - Payments
+      summary: Get payment history
+      description: Retrieve payment history for the authenticated user (student/parent)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of payments to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of payments to skip (for pagination)
+      responses:
+        "200":
+          description: Payment history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payments:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Payment"
+              example:
+                payments:
+                  - id: pay123
+                    bookingId: booking123
+                    amount: 4500
+                    currency: gbp
+                    status: succeeded
+                    paymentIntentId: pi_123456789
+                    createdAt: "2025-11-23T10:00:00Z"
+        "401":
+          description: Unauthorized
+
+  /v1/payments/connect-account:
+    post:
+      tags:
+        - Payments
+      summary: Create Stripe Connect account for tutor
+      description: Create a Stripe Connect account to receive payouts. Returns onboarding URL for tutor to complete setup.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Connect account created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accountId:
+                    type: string
+                    description: Stripe Connect account ID
+                    example: acct_123456789
+                  onboardingUrl:
+                    type: string
+                    format: uri
+                    description: URL for tutor to complete Stripe onboarding
+                    example: https://connect.stripe.com/setup/e/acct_123/xyz
+        "400":
+          description: Account already exists or invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden - User is not a tutor
+
+  /v1/payments/webhook:
+    post:
+      tags:
+        - Payments
+      summary: Stripe webhook endpoint
+      description: |
+        Handle Stripe webhook events. This endpoint is called by Stripe to notify about payment events.
+
+        Handled events:
+        - payment_intent.succeeded - Mark booking as paid
+        - payment_intent.payment_failed - Log payment failure
+
+        **Note:** This endpoint requires Stripe signature verification and should only be called by Stripe.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Stripe webhook event payload
+      responses:
+        "200":
+          description: Webhook processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+        "400":
+          description: Webhook signature verification failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Webhook Error: Invalid signature"
+        "500":
+          description: Error handling webhook event
+
+  /v1/users/{id}:
+    get:
+      tags:
+        - Users
+      summary: Get user profile by ID
+      description: Retrieve detailed user profile information
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: User ID
+          example: user123
+      responses:
+        "200":
+          description: User profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    patch:
+      tags:
+        - Users
+      summary: Update user profile
+      description: Update user profile information. Users can only update their own profile unless they are an admin.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: User ID to update
+          example: user123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                  example: John Smith
+                photoURL:
+                  type: string
+                  format: uri
+                  example: https://example.com/photo.jpg
+                bio:
+                  type: string
+                  maxLength: 1000
+                  description: Tutor biography (tutors only)
+                  example: Experienced Maths tutor with 10+ years of experience
+                subjects:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - Maths
+                      - Physics
+                      - Computer Science
+                      - Python
+                  description: Subjects taught (tutors only)
+                  example:
+                    - Maths
+                    - Physics
+      responses:
+        "200":
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Profile updated successfully
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden - Cannot update another user's profile
+        "404":
+          description: User not found
+
+  /v1/users/tutors/all:
+    get:
+      tags:
+        - Users
+      summary: Get all approved tutors
+      description: Retrieve a list of all approved and active tutors
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of tutors to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of tutors to skip (for pagination)
+      responses:
+        "200":
+          description: Tutors retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tutors:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+              example:
+                tutors:
+                  - uid: tutor123
+                    email: tutor@example.com
+                    displayName: Jane Doe
+                    role: tutor
+                    subjects:
+                      - Maths
+                      - Physics
+                    bio: Experienced tutor with 10+ years
+                    isApproved: true
+        "401":
+          description: Unauthorized
+
+  /v1/users/tutors/subject/{subject}:
+    get:
+      tags:
+        - Users
+      summary: Get tutors by subject
+      description: Retrieve approved tutors who teach a specific subject
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: subject
+          required: true
+          schema:
+            type: string
+            enum:
+              - Maths
+              - Physics
+              - Computer Science
+              - Python
+          description: Subject to filter by
+          example: Maths
+      responses:
+        "200":
+          description: Tutors retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tutors:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+              example:
+                tutors:
+                  - uid: tutor123
+                    email: tutor@example.com
+                    displayName: Jane Doe
+                    role: tutor
+                    subjects:
+                      - Maths
+                      - Physics
+                    bio: Experienced Maths tutor
+                    isApproved: true
+        "400":
+          description: Invalid subject
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "404":
+          description: No tutors found for this subject
+
+  /v1/messages/conversations:
+    get:
+      tags:
+        - Messages
+      summary: Get user's conversations
+      description: Retrieve all conversations for the authenticated user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of conversations to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of conversations to skip (for pagination)
+      responses:
+        "200":
+          description: Conversations retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversations:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Conversation"
+              example:
+                conversations:
+                  - id: conv123
+                    participantIds:
+                      - student123
+                      - tutor456
+                    lastMessage:
+                      text: Thanks for the session!
+                      senderId: student123
+                      timestamp: "2025-11-23T10:30:00Z"
+                    unreadCount:
+                      student123: 0
+                      tutor456: 2
+        "401":
+          description: Unauthorized
+
+    post:
+      tags:
+        - Messages
+      summary: Create new conversation
+      description: Create a new conversation between two users (e.g., student and tutor)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - participantIds
+              properties:
+                participantIds:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 2
+                  maxItems: 2
+                  description: Array of user IDs to include in conversation
+                  example:
+                    - student123
+                    - tutor456
+      responses:
+        "201":
+          description: Conversation created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "400":
+          description: Invalid participant IDs or conversation already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+
+  /v1/messages/conversations/{id}:
+    get:
+      tags:
+        - Messages
+      summary: Get conversation messages
+      description: Retrieve all messages in a specific conversation
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Conversation ID
+          example: conv123
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Maximum number of messages to return
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of messages to skip (for pagination)
+      responses:
+        "200":
+          description: Messages retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+              example:
+                messages:
+                  - id: msg123
+                    senderId: student123
+                    text: Hello, when is our next session?
+                    timestamp: "2025-11-23T10:30:00Z"
+                    read: true
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden - User is not a participant in this conversation
+        "404":
+          description: Conversation not found
+
+  /v1/messages/conversations/{id}/messages:
+    post:
+      tags:
+        - Messages
+      summary: Send message in conversation
+      description: Send a new message in an existing conversation. Supports text messages and file attachments (homework, documents).
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Conversation ID
+          example: conv123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  description: Message text content
+                  minLength: 1
+                  maxLength: 5000
+                  example: Hello, when is our next session?
+                fileUrl:
+                  type: string
+                  format: uri
+                  description: Optional file attachment URL (homework, documents)
+                  example: https://storage.googleapis.com/files/homework.pdf
+      responses:
+        "201":
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: Invalid message content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden - User is not a participant or student under 18 (chat restrictions)
+        "404":
+          description: Conversation not found
+
+  /v1/messages/conversations/{id}/read:
+    post:
+      tags:
+        - Messages
+      summary: Mark messages as read
+      description: Mark all messages in a conversation as read for the current user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Conversation ID
+          example: conv123
+      responses:
+        "200":
+          description: Messages marked as read successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Messages marked as read
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden - User is not a participant in this conversation
+        "404":
+          description: Conversation not found
