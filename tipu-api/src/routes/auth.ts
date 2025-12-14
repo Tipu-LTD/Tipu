@@ -6,7 +6,7 @@ const router = Router()
 
 router.post('/register', async (req, res, next) => {
   try {
-    const { uid, email, displayName, role, dateOfBirth, parentId } = req.body
+    const { uid, email, displayName, role, dateOfBirth, parentId, bio, subjects, hourlyRates } = req.body
 
     const user = await userService.createUser(uid, {
       email,
@@ -14,6 +14,9 @@ router.post('/register', async (req, res, next) => {
       role,
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
       parentId,
+      bio,
+      subjects,
+      hourlyRates,
     })
 
     res.status(201).json({

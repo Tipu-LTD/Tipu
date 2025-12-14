@@ -32,16 +32,46 @@ export const createUser = async (uid: string, input: CreateUserInput): Promise<U
 
   if (input.parentId) {
     user.parentId = input.parentId
+
+    // Verify parent exists and has parent role
+    const parentRef = db.collection('users').doc(input.parentId)
+    const parentDoc = await parentRef.get()
+
+    if (!parentDoc.exists) {
+      throw new ApiError('Parent account not found', 404)
+    }
+
+    const parentData = parentDoc.data()
+    if (parentData?.role !== 'parent') {
+      throw new ApiError('Specified user is not a parent account', 400)
+    }
+
+    // Add child to parent's childrenIds array
+    await parentRef.update({
+      childrenIds: FieldValue.arrayUnion(uid),
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+
+    logger.info(`Child ${uid} linked to parent ${input.parentId}`)
   }
 
-  // Set default tutor rates if role is tutor
+  // Add tutor-specific fields
   if (input.role === 'tutor') {
-    user.hourlyRates = {
+    // Use custom hourly rates if provided, otherwise use defaults
+    user.hourlyRates = input.hourlyRates || {
       GCSE: 4500, // £45.00 in pence
       'A-Level': 6000, // £60.00 in pence
     }
     user.isApproved = false
     user.dbsVerified = false
+
+    // Add bio and subjects if provided
+    if (input.bio) {
+      user.bio = input.bio
+    }
+    if (input.subjects) {
+      user.subjects = input.subjects
+    }
   }
 
   await userRef.set(user)

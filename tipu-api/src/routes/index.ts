@@ -5,6 +5,7 @@ import bookingRoutes from './bookings'
 import paymentRoutes from './payments'
 import userRoutes from './users'
 import messageRoutes from './messages'
+import availabilityRoutes from './availability'
 
 const router = Router()
 
@@ -15,5 +16,6 @@ router.use('/v1/bookings', bookingRoutes)
 router.use('/v1/payments', paymentRoutes)
 router.use('/v1/users', userRoutes)
 router.use('/v1/messages', messageRoutes)
+router.use('/v1/availability', availabilityRoutes)
 
 export default router

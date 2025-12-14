@@ -25,11 +25,16 @@ app.use(
 );
 
 // CORS configuration - allow multiple origins
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5173",
-  "https://e85f917e-442a-4cd9-8b6c-ece9d8844a07.lovableproject.com",
-];
+// Read from environment variable or use defaults for development
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
+  : [
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://localhost:8080",
+      "http://localhost:8081", // Vite auto-increment port
+      "https://e85f917e-442a-4cd9-8b6c-ece9d8844a07.lovableproject.com",
+    ];
 
 app.use(
   cors({

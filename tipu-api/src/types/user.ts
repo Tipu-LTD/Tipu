@@ -46,6 +46,13 @@ export interface CreateUserInput {
   role: UserRole
   dateOfBirth?: Date
   parentId?: string
+  // Tutor-specific fields
+  bio?: string
+  subjects?: Subject[]
+  hourlyRates?: {
+    GCSE: number
+    'A-Level': number
+  }
 }
 
 export interface UpdateUserInput {

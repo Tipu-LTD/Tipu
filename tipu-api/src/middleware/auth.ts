@@ -33,10 +33,24 @@ export const authenticate = async (
     // Verify Firebase JWT token
     const decodedToken = await auth.verifyIdToken(token)
 
-    // Attach user info to request
+    // Fetch user data from Firestore to get the role
+    const { db } = await import('../config/firebase')
+    const userDoc = await db.collection('users').doc(decodedToken.uid).get()
+
+    if (!userDoc.exists) {
+      return res.status(404).json({
+        error: 'User not found',
+        message: 'User profile does not exist',
+      })
+    }
+
+    const userData = userDoc.data()
+
+    // Attach user info to request including role from Firestore
     req.user = {
       uid: decodedToken.uid,
       email: decodedToken.email,
+      role: userData?.role,
     }
 
     next()

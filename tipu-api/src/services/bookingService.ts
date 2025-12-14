@@ -53,12 +53,43 @@ export const getBookingById = async (bookingId: string): Promise<Booking> => {
 }
 
 /**
- * Get bookings for a user (student or tutor)
+ * Get bookings for a user (student, tutor, or parent)
  */
 export const getUserBookings = async (
   userId: string,
-  role: 'student' | 'tutor'
+  role: 'student' | 'tutor' | 'parent'
 ): Promise<Booking[]> => {
+  // Handle parent role - fetch bookings for all children
+  if (role === 'parent') {
+    // Fetch parent user to get childrenIds
+    const userDoc = await db.collection('users').doc(userId).get()
+
+    if (!userDoc.exists) {
+      throw new ApiError('User not found', 404)
+    }
+
+    const userData = userDoc.data()
+    const childrenIds = userData?.childrenIds || []
+
+    // If no children, return empty array
+    if (childrenIds.length === 0) {
+      logger.info(`Parent ${userId} has no children, returning empty bookings`)
+      return []
+    }
+
+    // Query bookings for all children
+    // Note: Firestore 'in' query supports max 10 values
+    const snapshot = await db
+      .collection('bookings')
+      .where('studentId', 'in', childrenIds)
+      .orderBy('scheduledAt', 'desc')
+      .get()
+
+    logger.info(`Fetched ${snapshot.size} bookings for parent ${userId} (${childrenIds.length} children)`)
+    return snapshot.docs.map((doc) => doc.data() as Booking)
+  }
+
+  // Handle student and tutor roles
   const field = role === 'student' ? 'studentId' : 'tutorId'
   const snapshot = await db
     .collection('bookings')

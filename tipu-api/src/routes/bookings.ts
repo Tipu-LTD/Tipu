@@ -1,13 +1,33 @@
 import { Router } from 'express'
-import { authenticate, AuthRequest, requireRole } from '../middleware/auth'
+import { authenticate, AuthRequest } from '../middleware/auth'
 import * as bookingService from '../services/bookingService'
+import { db } from '../config/firebase'
+import { ApiError } from '../middleware/errorHandler'
 
 const router = Router()
 
 router.post('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    const user = req.user!
+    let studentId = user.uid // Default to current user
+
+    // If parent role and studentId provided in request, validate and use it
+    if (user.role === 'parent' && req.body.studentId) {
+      // Fetch parent's children to validate
+      const userDoc = await db.collection('users').doc(user.uid).get()
+      const childrenIds = userDoc.data()?.childrenIds || []
+
+      if (!childrenIds.includes(req.body.studentId)) {
+        throw new ApiError('You can only create bookings for your registered children', 403)
+      }
+
+      studentId = req.body.studentId
+    }
+    // If student role, always use their own ID (ignore any provided studentId)
+    // This prevents students from creating bookings for other students
+
     const booking = await bookingService.createBooking({
-      studentId: req.user!.uid,
+      studentId,
       tutorId: req.body.tutorId,
       subject: req.body.subject,
       level: req.body.level,
@@ -25,7 +45,18 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const role = req.user!.role || 'student'
-    const bookings = await bookingService.getUserBookings(req.user!.uid, role as any)
+    console.log('GET /bookings - User:', req.user!.uid, 'Role:', role, 'Status filter:', req.query.status)
+
+    let bookings = await bookingService.getUserBookings(req.user!.uid, role as any)
+    console.log('Bookings retrieved from DB:', bookings.length)
+
+    // Filter by status if provided
+    const statusFilter = req.query.status as string | undefined
+    if (statusFilter) {
+      const beforeCount = bookings.length
+      bookings = bookings.filter(b => b.status === statusFilter)
+      console.log('Bookings after status filter:', bookings.length, '(filtered from', beforeCount, ')')
+    }
 
     res.json({ bookings })
   } catch (error) {
