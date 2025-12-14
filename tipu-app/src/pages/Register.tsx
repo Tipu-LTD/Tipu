@@ -13,18 +13,15 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { GraduationCap, Users, Heart, ArrowLeft, AlertCircle } from 'lucide-react';
+import { GraduationCap, Users, Heart, ArrowLeft } from 'lucide-react';
 import { UserRole, Subject } from '@/types/user';
-import { calculateAge } from '@/utils/age';
 
 const roles = [
   {
     value: 'student' as UserRole,
     icon: GraduationCap,
     title: 'Student',
-    description: 'Book sessions and learn from expert tutors',
-    badge: '18+ only',
-    note: 'Under 18? Ask your parent to register'
+    description: 'Book sessions and learn from expert tutors'
   },
   {
     value: 'tutor' as UserRole,
@@ -36,7 +33,7 @@ const roles = [
     value: 'parent' as UserRole,
     icon: Heart,
     title: 'Parent',
-    description: 'Manage your children\'s learning (required for under-18 students)'
+    description: "Manage your children's learning journey"
   }
 ];
 
@@ -69,7 +66,6 @@ const Register = () => {
   const [tutorSubjects, setTutorSubjects] = useState<Subject[]>([]);
   const [gcseRate, setGcseRate] = useState('');
   const [aLevelRate, setALevelRate] = useState('');
-  const [studentDateOfBirth, setStudentDateOfBirth] = useState('');
 
   const { register, handleSubmit, formState: { errors } } = useForm<BasicInfoData>({
     resolver: zodResolver(basicInfoSchema)
@@ -98,19 +94,6 @@ const Register = () => {
     if (!selectedRole || !basicInfo) return;
 
     // Validate role-specific fields
-    if (selectedRole === 'student') {
-      if (!studentDateOfBirth) {
-        toast.error('Please enter your date of birth');
-        return;
-      }
-      const age = calculateAge(studentDateOfBirth);
-      if (age < 18) {
-        toast.error('Students under 18 must be registered by a parent account. Please ask your parent to create an account and add you as a child.');
-        setStep(2); // Go back to basic info step
-        return;
-      }
-    }
-
     if (selectedRole === 'tutor') {
       if (tutorBio.length < 50) {
         toast.error('Bio must be at least 50 characters');
@@ -146,10 +129,6 @@ const Register = () => {
       };
 
       // Add role-specific data
-      if (selectedRole === 'student') {
-        registrationData.dateOfBirth = studentDateOfBirth;
-      }
-
       if (selectedRole === 'tutor') {
         registrationData.bio = tutorBio;
         registrationData.subjects = tutorSubjects;
@@ -186,7 +165,14 @@ const Register = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-background p-4 overflow-hidden">
+      <div className="absolute inset-0 -z-10">
+        <img 
+          src="https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=1920&h=1080&fit=crop"
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover opacity-40"
+        />
+      </div>
       <div className="w-full max-w-2xl space-y-4">
         {step === 1 && (
           <Button variant="ghost" onClick={() => navigate('/')}>
@@ -219,18 +205,8 @@ const Register = () => {
                     >
                       <CardHeader className="text-center">
                         <Icon className="h-12 w-12 mx-auto mb-2" />
-                        <div className="flex items-center justify-center gap-2">
-                          <CardTitle className="text-base">{role.title}</CardTitle>
-                          {role.badge && (
-                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                              {role.badge}
-                            </span>
-                          )}
-                        </div>
+                        <CardTitle className="text-base">{role.title}</CardTitle>
                         <CardDescription className="text-sm">{role.description}</CardDescription>
-                        {role.note && (
-                          <p className="text-xs text-muted-foreground mt-2">{role.note}</p>
-                        )}
                       </CardHeader>
                     </Card>
                   );
@@ -264,22 +240,6 @@ const Register = () => {
                   <p className="text-sm text-destructive">{errors.email.message}</p>
                 )}
               </div>
-              {selectedRole === 'student' && (
-                <div className="space-y-2">
-                  <Label htmlFor="dateOfBirth">Date of Birth</Label>
-                  <Input
-                    id="dateOfBirth"
-                    type="date"
-                    value={studentDateOfBirth}
-                    onChange={(e) => setStudentDateOfBirth(e.target.value)}
-                    max={new Date().toISOString().split('T')[0]}
-                    required
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    Required to verify you are 18 or older
-                  </p>
-                </div>
-              )}
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <Input id="password" type="password" {...register('password')} />

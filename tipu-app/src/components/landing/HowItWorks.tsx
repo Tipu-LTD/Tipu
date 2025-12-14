@@ -1,48 +1,67 @@
-import { Search, Calendar, TrendingUp } from 'lucide-react';
+import { Search, Calendar, Play, BarChart3 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 const steps = [
   {
-    number: 1,
     icon: Search,
-    title: 'Choose Your Subject',
-    description: 'Browse our qualified tutors and find the perfect match'
+    number: '01',
+    title: 'Choose Your Service',
+    description: 'Browse tutoring, PSP, or homeschooling support based on your family\'s needs.',
   },
   {
-    number: 2,
     icon: Calendar,
-    title: 'Book a Session',
-    description: 'Select a time that works for you and make payment'
+    number: '02',
+    title: 'Book or Subscribe',
+    description: 'Select your preferred tutor and schedule, or choose your subscription tier.',
   },
   {
-    number: 3,
-    icon: TrendingUp,
-    title: 'Learn & Grow',
-    description: 'Join your session, learn, and track your progress'
-  }
+    icon: Play,
+    number: '03',
+    title: 'Start Learning',
+    description: 'Join live sessions, access resources, or follow your personalized lesson plans.',
+  },
+  {
+    icon: BarChart3,
+    number: '04',
+    title: 'Track Progress',
+    description: 'Review detailed reports, session recordings, and watch your growth over time.',
+  },
 ];
 
 export function HowItWorks() {
   return (
-    <section className="py-20 px-4 bg-muted/50">
+    <section className="py-20 px-4 bg-muted/30">
       <div className="container mx-auto">
-        <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
-        <div className="grid gap-8 md:grid-cols-3">
-          {steps.map((step, index) => {
-            const Icon = step.icon;
-            return (
-              <div key={step.number} className="relative text-center">
-                <div className="mb-4 inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary text-primary-foreground text-2xl font-bold">
-                  {step.number}
+        <div className="text-center max-w-3xl mx-auto mb-16">
+          <Badge variant="secondary" className="mb-4">How It Works</Badge>
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+            Getting Started is Simple
+          </h2>
+          <p className="text-lg text-muted-foreground">
+            Four easy steps to begin your learning journey with Tipu.
+          </p>
+        </div>
+
+        <div className="relative">
+          <div className="hidden lg:block absolute top-24 left-[calc(12.5%+28px)] right-[calc(12.5%+28px)] h-0.5 bg-primary/20" />
+          
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            {steps.map((step, index) => (
+              <div key={index} className="relative text-center">
+                <div className="relative inline-flex items-center justify-center w-14 h-14 bg-primary rounded-full mb-6 shadow-lg">
+                  <step.icon className="h-7 w-7 text-primary-foreground" />
+                  <span className="absolute -top-2 -right-2 w-6 h-6 bg-foreground text-background text-xs font-bold rounded-full flex items-center justify-center">
+                    {step.number.slice(-1)}
+                  </span>
                 </div>
-                <Icon className="h-12 w-12 mx-auto mb-4 text-primary" />
-                <h3 className="text-xl font-semibold mb-2">{step.title}</h3>
-                <p className="text-muted-foreground">{step.description}</p>
-                {index < steps.length - 1 && (
-                  <div className="hidden md:block absolute top-8 left-[60%] w-[80%] h-0.5 bg-border" />
-                )}
+                
+                <h3 className="text-lg font-semibold mb-2">{step.title}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  {step.description}
+                </p>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       </div>
     </section>

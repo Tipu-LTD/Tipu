@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Booking, BookingStatus } from '@/types/booking';
 import { penceToPounds } from '@/utils/currency';
-import { parseFirestoreDate } from '@/utils/date';
 
 interface BookingCardProps {
   booking: Booking;
@@ -67,12 +66,6 @@ export function BookingCard({
                 <span>{booking.subject}</span>
                 <Badge variant="outline" className="text-xs">{booking.level}</Badge>
               </div>
-              {studentName && tutorName && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                  <User className="h-3 w-3" />
-                  <span>For: {studentName}</span>
-                </div>
-              )}
             </div>
           </div>
           <Badge className={statusColors[booking.status]}>
@@ -84,11 +77,11 @@ export function BookingCard({
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Calendar className="h-4 w-4" />
-            <span>{format(parseFirestoreDate(booking.scheduledAt), 'PPP')}</span>
+            <span>{format(new Date(booking.scheduledAt), 'PPP')}</span>
           </div>
           <div className="flex items-center gap-2 text-muted-foreground">
             <Clock className="h-4 w-4" />
-            <span>{format(parseFirestoreDate(booking.scheduledAt), 'p')}</span>
+            <span>{format(new Date(booking.scheduledAt), 'p')}</span>
           </div>
         </div>
 
