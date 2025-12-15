@@ -17,10 +17,8 @@ import { ClipboardList } from 'lucide-react';
 export default function TutorRequests() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [acceptModalOpen, setAcceptModalOpen] = useState(false);
   const [declineModalOpen, setDeclineModalOpen] = useState(false);
   const [selectedBookingId, setSelectedBookingId] = useState<string>('');
-  const [meetingLink, setMeetingLink] = useState('');
   const [declineReason, setDeclineReason] = useState('');
 
   const { data: bookingsData, isLoading } = useQuery({
@@ -41,13 +39,10 @@ export default function TutorRequests() {
   });
 
   const acceptMutation = useMutation({
-    mutationFn: (data: { id: string; meetingLink: string }) =>
-      bookingsApi.accept(data.id, { meetingLink: data.meetingLink }),
+    mutationFn: (id: string) => bookingsApi.accept(id),
     onSuccess: () => {
-      toast.success('Booking accepted!');
+      toast.success('Booking accepted! Student will be prompted to pay.');
       queryClient.invalidateQueries({ queryKey: ['tutor-requests'] });
-      setAcceptModalOpen(false);
-      setMeetingLink('');
     },
     onError: () => {
       toast.error('Failed to accept booking');
@@ -69,24 +64,14 @@ export default function TutorRequests() {
   });
 
   const handleAcceptClick = (id: string) => {
-    setSelectedBookingId(id);
-    // Auto-generate placeholder Zoom link for testing
-    const placeholderZoomLink = `https://zoom.us/j/test-${id.substring(0, 10)}`;
-    setMeetingLink(placeholderZoomLink);
-    setAcceptModalOpen(true);
+    if (confirm('Accept this booking? Student will be prompted to pay.')) {
+      acceptMutation.mutate(id);
+    }
   };
 
   const handleDeclineClick = (id: string) => {
     setSelectedBookingId(id);
     setDeclineModalOpen(true);
-  };
-
-  const handleAcceptSubmit = () => {
-    if (!meetingLink.trim()) {
-      toast.error('Please provide a meeting link');
-      return;
-    }
-    acceptMutation.mutate({ id: selectedBookingId, meetingLink });
   };
 
   const handleDeclineSubmit = () => {
@@ -137,37 +122,6 @@ export default function TutorRequests() {
           </div>
         )}
       </div>
-
-      {/* Accept Modal */}
-      <Dialog open={acceptModalOpen} onOpenChange={setAcceptModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Accept Booking</DialogTitle>
-            <DialogDescription>
-              Provide a meeting link for the student
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="meetingLink">Meeting Link (Zoom, Google Meet, etc.)</Label>
-              <Input
-                id="meetingLink"
-                placeholder="https://zoom.us/j/..."
-                value={meetingLink}
-                onChange={(e) => setMeetingLink(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setAcceptModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAcceptSubmit} disabled={acceptMutation.isPending} className="flex-1">
-                {acceptMutation.isPending ? 'Accepting...' : 'Accept Booking'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Decline Modal */}
       <Dialog open={declineModalOpen} onOpenChange={setDeclineModalOpen}>

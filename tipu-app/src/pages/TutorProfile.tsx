@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { usersApi } from '@/lib/api/users';
 import { penceToPounds } from '@/utils/currency';
+import { FIXED_PRICES } from '@/utils/pricing';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -64,13 +65,8 @@ export default function TutorProfile() {
     .join('')
     .toUpperCase();
 
-  const gcseRate = tutor.hourlyRates?.GCSE || 0;
-  const aLevelRate = tutor.hourlyRates?.['A-Level'] || 0;
-
   // Validate tutor has complete profile before allowing booking
-  const canBook = tutor.subjects && tutor.subjects.length > 0 && 
-                  tutor.hourlyRates?.GCSE && 
-                  tutor.hourlyRates?.['A-Level'];
+  const canBook = tutor.subjects && tutor.subjects.length > 0;
 
   const handleBookLesson = () => {
     setBookingModalOpen(true);
@@ -185,13 +181,13 @@ export default function TutorProfile() {
                   <div className="flex justify-between items-center p-4 bg-muted rounded-lg">
                     <span className="font-medium text-foreground">GCSE</span>
                     <span className="text-2xl font-bold text-primary">
-                      {penceToPounds(gcseRate)}/hr
+                      {penceToPounds(FIXED_PRICES.GCSE)}/hr
                     </span>
                   </div>
                   <div className="flex justify-between items-center p-4 bg-muted rounded-lg">
                     <span className="font-medium text-foreground">A-Level</span>
                     <span className="text-2xl font-bold text-primary">
-                      {penceToPounds(aLevelRate)}/hr
+                      {penceToPounds(FIXED_PRICES['A-Level'])}/hr
                     </span>
                   </div>
                 </div>

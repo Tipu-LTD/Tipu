@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Booking, BookingStatus } from '@/types/booking';
 import { penceToPounds } from '@/utils/currency';
+import { parseFirestoreDate } from '@/utils/date';
 
 interface BookingCardProps {
   booking: Booking;
@@ -21,6 +22,7 @@ interface BookingCardProps {
 
 const statusColors: Record<BookingStatus, string> = {
   pending: 'bg-yellow-500',
+  accepted: 'bg-green-500',
   confirmed: 'bg-blue-500',
   completed: 'bg-green-500',
   cancelled: 'bg-gray-500',
@@ -29,6 +31,7 @@ const statusColors: Record<BookingStatus, string> = {
 
 const statusLabels: Record<BookingStatus, string> = {
   pending: 'Pending',
+  accepted: 'Accepted',
   confirmed: 'Confirmed',
   completed: 'Completed',
   cancelled: 'Cancelled',
@@ -77,11 +80,11 @@ export function BookingCard({
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Calendar className="h-4 w-4" />
-            <span>{format(new Date(booking.scheduledAt), 'PPP')}</span>
+            <span>{format(parseFirestoreDate(booking.scheduledAt), 'PPP')}</span>
           </div>
           <div className="flex items-center gap-2 text-muted-foreground">
             <Clock className="h-4 w-4" />
-            <span>{format(new Date(booking.scheduledAt), 'p')}</span>
+            <span>{format(parseFirestoreDate(booking.scheduledAt), 'p')}</span>
           </div>
         </div>
 

@@ -1,7 +1,7 @@
 import { Timestamp } from 'firebase-admin/firestore'
 import { Subject, Level } from './user'
 
-export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'declined'
+export type BookingStatus = 'pending' | 'accepted' | 'confirmed' | 'completed' | 'cancelled' | 'declined'
 
 export interface LessonReport {
   topicsCovered: string
@@ -43,7 +43,7 @@ export interface CreateBookingInput {
 export interface AcceptBookingInput {
   bookingId: string
   tutorId: string
-  meetingLink: string
+  // meetingLink will be added after payment via Teams integration
 }
 
 export interface DeclineBookingInput {

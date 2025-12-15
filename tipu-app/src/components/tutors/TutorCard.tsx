@@ -5,6 +5,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { penceToPounds } from '@/utils/currency';
+import { FIXED_PRICES } from '@/utils/pricing';
 
 interface TutorCardProps {
   tutor: User;
@@ -20,9 +21,6 @@ export function TutorCard({ tutor }: TutorCardProps) {
   const truncatedBio = tutor.bio && tutor.bio.length > 100
     ? `${tutor.bio.substring(0, 100)}...`
     : tutor.bio || 'No bio available';
-
-  const gcseRate = tutor.hourlyRates?.GCSE || 0;
-  const aLevelRate = tutor.hourlyRates?.['A-Level'] || 0;
 
   return (
     <Card className="flex flex-col h-full hover:shadow-lg transition-shadow">
@@ -57,8 +55,8 @@ export function TutorCard({ tutor }: TutorCardProps) {
 
           {/* Hourly Rates */}
           <div className="text-sm font-medium text-muted-foreground space-y-1">
-            <p>GCSE: {penceToPounds(gcseRate)}/hr</p>
-            <p>A-Level: {penceToPounds(aLevelRate)}/hr</p>
+            <p>GCSE: {penceToPounds(FIXED_PRICES.GCSE)}/hr</p>
+            <p>A-Level: {penceToPounds(FIXED_PRICES['A-Level'])}/hr</p>
           </div>
         </div>
       </CardContent>

@@ -1,24 +1,34 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { BookingCard } from '@/components/bookings/BookingCard';
+import { PaymentPrompt } from '@/components/bookings/PaymentPrompt';
+import { PaymentForm } from '@/components/bookings/PaymentForm';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { bookingsApi } from '@/lib/api/bookings';
+import { paymentsApi } from '@/lib/api/payments';
 import { usersApi } from '@/lib/api/users';
 import { parseFirestoreDate } from '@/utils/date';
 import { Booking, BookingStatus } from '@/types/booking';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 
 export default function StudentBookings() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'pending' | 'upcoming' | 'past' | 'cancelled'>('pending');
   const [selectedChildFilter, setSelectedChildFilter] = useState<string>('all');
+  const [paymentBooking, setPaymentBooking] = useState<Booking | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentSecret, setPaymentSecret] = useState<string | null>(null);
+  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
 
   const { data: bookingsData, isLoading } = useQuery({
     queryKey: ['student-bookings'],
@@ -90,7 +100,7 @@ export default function StudentBookings() {
     switch (status) {
       case 'pending':
         filtered = bookings.filter(b =>
-          b.status === 'pending' &&
+          (b.status === 'pending' || b.status === 'accepted') &&
           parseFirestoreDate(b.scheduledAt) >= now
         );
         break;
@@ -132,6 +142,46 @@ export default function StudentBookings() {
   console.log(`Upcoming (${upcomingBookings.length}):`, upcomingBookings.map(b => b.id));
   console.log(`Past (${pastBookings.length}):`, pastBookings.map(b => b.id));
   console.log(`Cancelled (${cancelledBookings.length}):`, cancelledBookings.map(b => b.id));
+
+  const handlePayNow = async (booking: Booking) => {
+    setIsCreatingPayment(true);
+    try {
+      // Call API to create Payment Intent
+      const paymentIntent = await paymentsApi.createIntent({
+        bookingId: booking.id,
+        amount: booking.price,
+        currency: 'gbp'
+      });
+
+      // Store the clientSecret
+      setPaymentSecret(paymentIntent.clientSecret);
+      setPaymentBooking(booking);
+      setShowPaymentModal(true);
+    } catch (error) {
+      console.error('Failed to create payment intent:', error);
+      toast.error('Failed to initialize payment. Please try again.');
+    } finally {
+      setIsCreatingPayment(false);
+    }
+  };
+
+  const handlePaymentSuccess = async () => {
+    try {
+      // Confirm booking status after successful payment
+      if (paymentBooking) {
+        await bookingsApi.confirmPayment(paymentBooking.id);
+      }
+
+      toast.success('Payment successful! Booking confirmed.');
+      setShowPaymentModal(false);
+      setPaymentBooking(null);
+      setPaymentSecret(null);
+      queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
+    } catch (error) {
+      console.error('Failed to confirm booking:', error);
+      toast.error('Payment succeeded but booking status update failed. Please refresh the page.');
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -195,14 +245,22 @@ export default function StudentBookings() {
                 const tutor = tutorsData?.[booking.tutorId];
                 const student = studentsData?.[booking.studentId];
                 return (
-                  <BookingCard
-                    key={booking.id}
-                    booking={booking}
-                    tutorName={tutor?.displayName}
-                    tutorPhoto={tutor?.photoURL}
-                    studentName={user?.role === 'parent' ? student?.displayName : undefined}
-                    onViewDetails={(id) => navigate(`/bookings/${id}`)}
-                  />
+                  <div key={booking.id}>
+                    {booking.status === 'accepted' && (
+                      <PaymentPrompt
+                        booking={booking}
+                        onPayNow={() => handlePayNow(booking)}
+                        isLoading={isCreatingPayment && paymentBooking?.id === booking.id}
+                      />
+                    )}
+                    <BookingCard
+                      booking={booking}
+                      tutorName={tutor?.displayName}
+                      tutorPhoto={tutor?.photoURL}
+                      studentName={user?.role === 'parent' ? student?.displayName : undefined}
+                      onViewDetails={(id) => navigate(`/bookings/${id}`)}
+                    />
+                  </div>
                 );
               })
             )}
@@ -285,6 +343,23 @@ export default function StudentBookings() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Payment Modal */}
+      {paymentBooking && paymentSecret && (
+        <Dialog open={showPaymentModal} onOpenChange={setShowPaymentModal}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Complete Payment</DialogTitle>
+            </DialogHeader>
+            <PaymentForm
+              clientSecret={paymentSecret}
+              amount={paymentBooking.price}
+              onSuccess={handlePaymentSuccess}
+              onBack={() => setShowPaymentModal(false)}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </DashboardLayout>
   );
 }

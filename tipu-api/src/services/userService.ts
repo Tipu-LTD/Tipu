@@ -59,8 +59,8 @@ export const createUser = async (uid: string, input: CreateUserInput): Promise<U
   if (input.role === 'tutor') {
     // Use custom hourly rates if provided, otherwise use defaults
     user.hourlyRates = input.hourlyRates || {
-      GCSE: 4500, // £45.00 in pence
-      'A-Level': 6000, // £60.00 in pence
+      GCSE: 2900, // £29.00 - Fixed pricing
+      'A-Level': 3900, // £39.00 - Fixed pricing
     }
     user.isApproved = false
     user.dbsVerified = false

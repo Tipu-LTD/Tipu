@@ -22,8 +22,7 @@ const profileSchema = z.object({
   displayName: z.string().min(2, 'Name must be at least 2 characters').max(100),
   bio: z.string().min(50, 'Bio must be at least 50 characters').max(1000, 'Bio must be less than 1000 characters').optional(),
   subjects: z.array(z.string()).optional(),
-  gcseRate: z.number().min(1000, 'GCSE rate must be at least £10').max(10000, 'GCSE rate must be at most £100').optional(),
-  aLevelRate: z.number().min(1000, 'A-Level rate must be at least £10').max(10000, 'A-Level rate must be at most £100').optional(),
+  // Rate fields removed - using fixed pricing (£29 GCSE, £39 A-Level)
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
@@ -38,8 +37,7 @@ const Profile = () => {
     defaultValues: {
       displayName: user?.displayName || '',
       bio: user?.bio || '',
-      gcseRate: user?.hourlyRates?.GCSE || undefined,
-      aLevelRate: user?.hourlyRates?.['A-Level'] || undefined,
+      // Rate default values removed - using fixed pricing
     }
   });
 
@@ -63,12 +61,7 @@ const Profile = () => {
       if (user.role === 'tutor') {
         updateData.bio = data.bio;
         updateData.subjects = selectedSubjects;
-        if (data.gcseRate && data.aLevelRate) {
-          updateData.hourlyRates = {
-            GCSE: data.gcseRate,
-            'A-Level': data.aLevelRate
-          };
-        }
+        // hourlyRates removed from update - backend uses fixed pricing
       }
 
       await usersApi.update(user.uid, updateData);
@@ -168,33 +161,21 @@ const Profile = () => {
               <Card>
                 <CardHeader>
                   <CardTitle>Hourly Rates</CardTitle>
-                  <CardDescription>Set your rates in pence (e.g., 6000 = £60.00)</CardDescription>
+                  <CardDescription>Standard rates for all tutors</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="gcseRate">GCSE Rate (pence)</Label>
-                    <Input 
-                      id="gcseRate" 
-                      type="number" 
-                      {...register('gcseRate', { valueAsNumber: true })} 
-                      placeholder="e.g., 5000 for £50.00"
-                    />
-                    {errors.gcseRate && (
-                      <p className="text-sm text-destructive">{errors.gcseRate.message}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="aLevelRate">A-Level Rate (pence)</Label>
-                    <Input 
-                      id="aLevelRate" 
-                      type="number" 
-                      {...register('aLevelRate', { valueAsNumber: true })} 
-                      placeholder="e.g., 6000 for £60.00"
-                    />
-                    {errors.aLevelRate && (
-                      <p className="text-sm text-destructive">{errors.aLevelRate.message}</p>
-                    )}
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
+                      <span className="font-medium">GCSE</span>
+                      <span className="text-lg font-bold text-primary">£29.00/hr</span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
+                      <span className="font-medium">A-Level</span>
+                      <span className="text-lg font-bold text-primary">£39.00/hr</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Standard rates apply to all tutors. Contact support if you have questions.
+                    </p>
                   </div>
                 </CardContent>
               </Card>

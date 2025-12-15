@@ -19,9 +19,10 @@ export interface BookingResponse {
   booking: Booking;
 }
 
-export interface AcceptBookingData {
-  meetingLink: string;
-}
+// AcceptBookingData no longer needed - meeting link added after payment
+// export interface AcceptBookingData {
+//   meetingLink: string;
+// }
 
 export interface DeclineBookingData {
   reason: string;
@@ -53,10 +54,10 @@ export const bookingsApi = {
   getById: (id: string) =>
     apiRequest<Booking>(`/v1/bookings/${id}`),
 
-  accept: (id: string, data: AcceptBookingData) =>
+  accept: (id: string) =>
     apiRequest<{ message: string }>(`/v1/bookings/${id}/accept`, {
-      method: 'POST',
-      body: JSON.stringify(data)
+      method: 'POST'
+      // No body needed - meeting link will be added after payment
     }),
 
   decline: (id: string, data: DeclineBookingData) =>
@@ -69,5 +70,10 @@ export const bookingsApi = {
     apiRequest<{ message: string }>(`/v1/bookings/${id}/lesson-report`, {
       method: 'POST',
       body: JSON.stringify(data)
+    }),
+
+  confirmPayment: (id: string) =>
+    apiRequest<{ message: string }>(`/v1/bookings/${id}/confirm-payment`, {
+      method: 'PATCH'
     })
 };

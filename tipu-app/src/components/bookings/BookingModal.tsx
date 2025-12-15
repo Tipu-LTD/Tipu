@@ -16,17 +16,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { Subject, Level } from '@/types/booking';
 import { penceToPounds, poundsToPence } from '@/utils/currency';
+import { calculateBookingPrice, type EducationLevel } from '@/utils/pricing';
 import { User } from '@/types/user';
 import { bookingsApi } from '@/lib/api/bookings';
-import { paymentsApi } from '@/lib/api/payments';
 import { usersApi } from '@/lib/api/users';
-import { PaymentForm } from './PaymentForm';
 import TimeSlotPicker from './TimeSlotPicker';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-
-// Toggle this to skip payment for testing
-const SKIP_PAYMENT_FOR_TESTING = true;
 
 const bookingSchema = z.object({
   subject: z.enum(['Maths', 'Physics', 'Computer Science', 'Python']),
@@ -47,10 +43,6 @@ export function BookingModal({ open, onOpenChange, tutor }: BookingModalProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [step, setStep] = useState<'details' | 'payment'>('details');
-  const [bookingData, setBookingData] = useState<BookingFormData | null>(null);
-  const [bookingId, setBookingId] = useState<string | null>(null);
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDateTime, setSelectedDateTime] = useState<Date>();
   const [selectedSubject, setSelectedSubject] = useState<Subject>();
@@ -81,9 +73,8 @@ export function BookingModal({ open, onOpenChange, tutor }: BookingModalProps) {
   }, [children, selectedChildId]);
 
   const calculatePrice = () => {
-    if (!selectedLevel || !tutor.hourlyRates) return 0;
-    const rateInPence = tutor.hourlyRates[selectedLevel];
-    return rateInPence * selectedDuration;
+    if (!selectedLevel) return 0;
+    return calculateBookingPrice(selectedLevel as EducationLevel, selectedDuration);
   };
 
   const handleDetailsSubmit = async () => {
@@ -98,13 +89,6 @@ export function BookingModal({ open, onOpenChange, tutor }: BookingModalProps) {
       return;
     }
 
-    const data: BookingFormData = {
-      subject: selectedSubject,
-      level: selectedLevel,
-      scheduledAt: selectedDateTime,
-      duration: selectedDuration
-    };
-
     setIsLoading(true);
     try {
       const priceInPence = calculatePrice();
@@ -112,44 +96,25 @@ export function BookingModal({ open, onOpenChange, tutor }: BookingModalProps) {
       // Prepare booking data with studentId for parents
       const bookingPayload = {
         tutorId: tutor.uid,
-        subject: data.subject,
-        level: data.level,
-        scheduledAt: data.scheduledAt.toISOString(),
+        subject: selectedSubject,
+        level: selectedLevel,
+        scheduledAt: selectedDateTime.toISOString(),
         price: priceInPence,
-        duration: data.duration,
+        duration: selectedDuration,
         ...(user?.role === 'parent' && selectedChildId && { studentId: selectedChildId })
       };
 
-      if (SKIP_PAYMENT_FOR_TESTING) {
-        // Test mode: Create booking directly without payment
-        const booking = await bookingsApi.create(bookingPayload);
+      // Create booking (status='pending', isPaid=false)
+      await bookingsApi.create(bookingPayload);
 
-        // Invalidate bookings query to show new booking immediately
-        queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
+      // Invalidate cache to show new booking
+      queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
 
-        toast.success('Booking created successfully!');
-        onOpenChange(false);
-        navigate(`/bookings/confirmation/${booking.id}`);
-      } else {
-        // Production mode: Create unpaid booking, then payment intent
-        const booking = await bookingsApi.create(bookingPayload);
+      // Success message
+      toast.success('Booking request sent to tutor! You\'ll be prompted to pay once they accept.');
 
-        // Invalidate bookings query to show new booking immediately
-        queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
-
-        setBookingId(booking.id);
-
-        // Create payment intent with real booking ID
-        const { clientSecret: secret } = await paymentsApi.createIntent({
-          bookingId: booking.id,
-          amount: priceInPence,
-          currency: 'gbp'
-        });
-
-        setClientSecret(secret);
-        setBookingData(data);
-        setStep('payment');
-      }
+      // Close modal
+      onOpenChange(false);
     } catch (error) {
       toast.error('Failed to create booking');
       console.error(error);
@@ -158,24 +123,7 @@ export function BookingModal({ open, onOpenChange, tutor }: BookingModalProps) {
     }
   };
 
-  const handlePaymentSuccess = async (paymentIntentId: string) => {
-    if (!bookingId) return;
-
-    try {
-      toast.success('Payment successful! Booking confirmed.');
-      onOpenChange(false);
-      navigate(`/bookings/confirmation/${bookingId}`);
-    } catch (error) {
-      toast.error('Failed to confirm booking');
-      console.error(error);
-    }
-  };
-
   const resetModal = () => {
-    setStep('details');
-    setBookingData(null);
-    setBookingId(null);
-    setClientSecret(null);
     setSelectedDateTime(undefined);
     setSelectedSubject(undefined);
     setSelectedLevel(undefined);
@@ -198,12 +146,11 @@ export function BookingModal({ open, onOpenChange, tutor }: BookingModalProps) {
         <DialogHeader>
           <DialogTitle>Book a Lesson with {tutor.displayName}</DialogTitle>
           <DialogDescription>
-            {step === 'details' ? 'Choose your lesson details' : 'Complete your payment'}
+            Choose your lesson details
           </DialogDescription>
         </DialogHeader>
 
-        {step === 'details' && (
-          <div className="space-y-6 pb-4">
+        <div className="space-y-6 pb-4">
             {/* Parent: Child Selection */}
             {user?.role === 'parent' && (
               <div className="space-y-2">
@@ -317,19 +264,9 @@ export function BookingModal({ open, onOpenChange, tutor }: BookingModalProps) {
               disabled={!selectedDateTime || !selectedSubject || !selectedLevel || isLoading}
               className="w-full"
             >
-              {isLoading ? 'Processing...' : SKIP_PAYMENT_FOR_TESTING ? 'Book Lesson' : 'Proceed to Payment'}
+              {isLoading ? 'Sending Request...' : 'Book Lesson'}
             </Button>
           </div>
-        )}
-
-        {step === 'payment' && clientSecret && (
-          <PaymentForm
-            clientSecret={clientSecret}
-            amount={totalPrice}
-            onSuccess={handlePaymentSuccess}
-            onBack={() => setStep('details')}
-          />
-        )}
       </DialogContent>
     </Dialog>
   );

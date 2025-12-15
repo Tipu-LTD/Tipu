@@ -29,9 +29,7 @@ export const createPaymentIntent = async (
       studentId: booking?.studentId,
       tutorId: booking?.tutorId,
     },
-    automatic_payment_methods: {
-      enabled: true,
-    },
+    payment_method_types: ['card'],
   })
 
   logger.info(`Payment intent created: ${paymentIntent.id}`, {
@@ -58,6 +56,7 @@ export const confirmPayment = async (
   await bookingRef.update({
     isPaid: true,
     paymentIntentId,
+    status: 'confirmed',
     updatedAt: FieldValue.serverTimestamp(),
   })
 

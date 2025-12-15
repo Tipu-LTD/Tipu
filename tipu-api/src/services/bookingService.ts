@@ -102,6 +102,8 @@ export const getUserBookings = async (
 
 /**
  * Accept a booking request
+ * Sets status to 'accepted' - student must complete payment to confirm
+ * Meeting link will be added after payment via Teams integration
  */
 export const acceptBooking = async (input: AcceptBookingInput): Promise<void> => {
   const bookingRef = db.collection('bookings').doc(input.bookingId)
@@ -122,12 +124,13 @@ export const acceptBooking = async (input: AcceptBookingInput): Promise<void> =>
   }
 
   await bookingRef.update({
-    status: 'confirmed',
-    meetingLink: input.meetingLink,
+    status: 'accepted',
+    // No meetingLink yet - will be added after payment
     updatedAt: FieldValue.serverTimestamp(),
   })
 
-  logger.info(`Booking accepted: ${input.bookingId}`, {
+  logger.info('Booking accepted (awaiting payment)', {
+    bookingId: input.bookingId,
     tutorId: input.tutorId,
   })
 }

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { authenticate, AuthRequest } from '../middleware/auth'
 import * as bookingService from '../services/bookingService'
 import { db } from '../config/firebase'
+import { FieldValue } from 'firebase-admin/firestore'
 import { ApiError } from '../middleware/errorHandler'
 
 const router = Router()
@@ -78,7 +79,7 @@ router.post('/:id/accept', authenticate, async (req: AuthRequest, res, next) => 
     await bookingService.acceptBooking({
       bookingId: req.params.id,
       tutorId: req.user!.uid,
-      meetingLink: req.body.meetingLink,
+      // No meetingLink - will be added after payment via Teams integration
     })
 
     res.json({ message: 'Booking accepted successfully' })
@@ -111,6 +112,29 @@ router.post('/:id/lesson-report', authenticate, async (req: AuthRequest, res, ne
     })
 
     res.json({ message: 'Lesson report submitted successfully' })
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.patch('/:id/confirm-payment', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const bookingRef = db.collection('bookings').doc(req.params.id)
+    const bookingDoc = await bookingRef.get()
+
+    if (!bookingDoc.exists) {
+      throw new ApiError('Booking not found', 404)
+    }
+
+    // Update booking to confirmed status
+    await bookingRef.update({
+      status: 'confirmed',
+      isPaid: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+
+    console.log(`Booking confirmed after payment: ${req.params.id}`)
+    res.json({ message: 'Booking confirmed successfully' })
   } catch (error) {
     next(error)
   }

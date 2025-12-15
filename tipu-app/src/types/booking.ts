@@ -1,4 +1,4 @@
-export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'declined';
+export type BookingStatus = 'pending' | 'accepted' | 'confirmed' | 'completed' | 'cancelled' | 'declined';
 
 export type Subject = 'Maths' | 'Physics' | 'Computer Science' | 'Python';
 

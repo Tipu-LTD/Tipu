@@ -60,7 +60,7 @@ export function PublicNavbar() {
       <div className="container mx-auto flex h-16 md:h-20 items-center justify-between px-4">
         {/* Logo */}
         <a href="/" className="flex items-center gap-2">
-          <img src="/tipu-logo.jpeg" alt="Tipu" className="h-10 md:h-12 w-auto" />
+          <img src="/tipu-logo.png" alt="Tipu" className="h-10 md:h-12 w-auto" />
         </a>
 
         {/* Desktop Navigation */}

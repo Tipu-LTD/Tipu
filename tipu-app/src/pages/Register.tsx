@@ -64,8 +64,7 @@ const Register = () => {
   // Role-specific form data
   const [tutorBio, setTutorBio] = useState('');
   const [tutorSubjects, setTutorSubjects] = useState<Subject[]>([]);
-  const [gcseRate, setGcseRate] = useState('');
-  const [aLevelRate, setALevelRate] = useState('');
+  // Rate state removed - using fixed pricing (£29 GCSE, £39 A-Level)
 
   const { register, handleSubmit, formState: { errors } } = useForm<BasicInfoData>({
     resolver: zodResolver(basicInfoSchema)
@@ -103,10 +102,7 @@ const Register = () => {
         toast.error('Please select at least one subject');
         return;
       }
-      if (!gcseRate || !aLevelRate) {
-        toast.error('Please set your hourly rates');
-        return;
-      }
+      // Rate validation removed - backend uses fixed pricing
     }
 
     if (!termsAccepted) {
@@ -132,10 +128,7 @@ const Register = () => {
       if (selectedRole === 'tutor') {
         registrationData.bio = tutorBio;
         registrationData.subjects = tutorSubjects;
-        registrationData.hourlyRates = {
-          GCSE: parseFloat(gcseRate),
-          'A-Level': parseFloat(aLevelRate)
-        };
+        // hourlyRates removed - backend uses fixed pricing (£29 GCSE, £39 A-Level)
       }
 
       // Register with backend
@@ -304,29 +297,11 @@ const Register = () => {
                     </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="gcseRate">GCSE Hourly Rate (£)</Label>
-                      <Input
-                        id="gcseRate"
-                        type="number"
-                        min="10"
-                        max="100"
-                        value={gcseRate}
-                        onChange={(e) => setGcseRate(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="aLevelRate">A-Level Hourly Rate (£)</Label>
-                      <Input
-                        id="aLevelRate"
-                        type="number"
-                        min="10"
-                        max="100"
-                        value={aLevelRate}
-                        onChange={(e) => setALevelRate(e.target.value)}
-                      />
-                    </div>
+                  {/* Rate inputs removed - using fixed pricing */}
+                  <div className="p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      <strong>Standard Hourly Rates:</strong> All tutors use fixed pricing - £29/hr (GCSE) • £39/hr (A-Level)
+                    </p>
                   </div>
                 </>
               )}
@@ -365,8 +340,7 @@ const Register = () => {
                 {selectedRole === 'tutor' && (
                   <>
                     <p><strong>Subjects:</strong> {tutorSubjects.join(', ')}</p>
-                    <p><strong>GCSE Rate:</strong> £{gcseRate}/hour</p>
-                    <p><strong>A-Level Rate:</strong> £{aLevelRate}/hour</p>
+                    <p><strong>Hourly Rates:</strong> £29/hr (GCSE) • £39/hr (A-Level) - Standard rates</p>
                   </>
                 )}
               </div>

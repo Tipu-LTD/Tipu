@@ -32,7 +32,7 @@ export function Footer() {
         <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-4">
           {/* Brand Column */}
           <div className="lg:col-span-1">
-            <img src="/tipu-logo.jpeg" alt="Tipu" className="h-10 w-auto mb-4 brightness-0 invert" />
+            <img src="/tipu-logo.png" alt="Tipu" className="h-10 w-auto mb-4 brightness-0 invert" />
             <p className="text-background/70 text-sm mb-6 leading-relaxed">
               Every student has the potential to grow. Personalized tutoring, parent support, 
               and homeschooling resources from university students who understand your journey.
