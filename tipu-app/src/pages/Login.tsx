@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { ArrowLeft } from 'lucide-react';
 import { signInWithEmail } from '@/lib/firebase/auth';
 import { useAuth } from '@/contexts/AuthContext';
+import { authApi } from '@/lib/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -47,18 +48,21 @@ const Login = () => {
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     try {
+      // Sign in with Firebase
       await signInWithEmail(data.email, data.password);
-      await refreshProfile();
-      
-      // Get user to determine redirect
-      const { user } = await import('@/lib/firebase/config').then(m => ({ user: m.auth.currentUser }));
-      
-      // Fetch full profile to get role
-      const response = await import('@/lib/api/auth').then(m => m.authApi.getMe());
-      
-      toast.success(`Welcome back, ${response.user.displayName}!`);
 
-      // Role-based redirect with hard navigation (ensures auth state is fresh)
+      // Refresh profile to sync auth state
+      await refreshProfile();
+
+      // Get user profile to determine role
+      const response = await authApi.getMe();
+
+      // Show success message
+      if (response.user.displayName) {
+        toast.success(`Welcome back, ${response.user.displayName}!`);
+      }
+
+      // Role-based redirect
       const dashboardMap: Record<UserRole, string> = {
         student: '/dashboard/student',
         tutor: '/dashboard/tutor',
@@ -66,9 +70,13 @@ const Login = () => {
         admin: '/dashboard/admin'
       };
 
-      // Use window.location for hard redirect to ensure auth state loads
-      window.location.href = dashboardMap[response.user.role];
+      // Use window.location for hard redirect
+      const targetUrl = dashboardMap[response.user.role];
+      if (targetUrl) {
+        window.location.href = targetUrl;
+      }
     } catch (error: any) {
+      console.error('Login error:', error);
       const errorMessage = getAuthErrorMessage(error.code || '');
       toast.error(errorMessage);
     } finally {
