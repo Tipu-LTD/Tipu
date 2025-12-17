@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { authenticate, AuthRequest } from '../middleware/auth'
 import * as bookingService from '../services/bookingService'
+import * as teamsService from '../services/teamsService'
 import { db } from '../config/firebase'
 import { FieldValue } from 'firebase-admin/firestore'
 import { ApiError } from '../middleware/errorHandler'
@@ -135,6 +136,56 @@ router.patch('/:id/confirm-payment', authenticate, async (req: AuthRequest, res,
 
     console.log(`Booking confirmed after payment: ${req.params.id}`)
     res.json({ message: 'Booking confirmed successfully' })
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * POST /api/v1/bookings/:id/generate-meeting
+ * Manually generate Teams meeting link for a booking
+ * Used when automatic generation fails or for bookings paid before Teams integration
+ */
+router.post('/:id/generate-meeting', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const bookingId = req.params.id
+
+    // Get booking to verify permissions
+    const bookingDoc = await db.collection('bookings').doc(bookingId).get()
+
+    if (!bookingDoc.exists) {
+      res.status(404).json({ error: 'Booking not found' })
+      return
+    }
+
+    const booking = bookingDoc.data()
+
+    // Verify user is either student, tutor, or admin
+    const isStudent = booking?.studentId === req.user!.uid
+    const isTutor = booking?.tutorId === req.user!.uid
+    const isAdmin = req.user!.role === 'admin'
+
+    if (!isStudent && !isTutor && !isAdmin) {
+      res.status(403).json({ error: 'Unauthorized' })
+      return
+    }
+
+    // Verify booking is confirmed (paid)
+    if (booking?.status !== 'confirmed') {
+      res.status(400).json({
+        error: 'Booking must be confirmed (paid) before generating meeting link',
+      })
+      return
+    }
+
+    // Generate Teams meeting
+    const meetingResult = await teamsService.generateMeetingForBooking(bookingId)
+
+    res.json({
+      message: 'Teams meeting generated successfully',
+      meetingLink: meetingResult.joinUrl,
+      meetingId: meetingResult.meetingId,
+    })
   } catch (error) {
     next(error)
   }

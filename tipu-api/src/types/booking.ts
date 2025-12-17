@@ -23,6 +23,7 @@ export interface Booking {
   isPaid: boolean
   paymentIntentId?: string
   meetingLink?: string
+  teamsMeetingId?: string
   recordingUrl?: string
   lessonReport?: LessonReport
   declineReason?: string

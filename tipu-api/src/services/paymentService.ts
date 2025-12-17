@@ -4,6 +4,7 @@ import { logger } from '../config/logger'
 import { CreatePaymentIntentInput, CreatePaymentIntentResponse } from '../types/payment'
 import { ApiError } from '../middleware/errorHandler'
 import { FieldValue } from 'firebase-admin/firestore'
+import * as teamsService from './teamsService'
 
 /**
  * Create Stripe Payment Intent for a booking
@@ -46,6 +47,7 @@ export const createPaymentIntent = async (
 /**
  * Confirm payment and update booking
  * Called by Stripe webhook
+ * Also generates Teams meeting link after payment confirmation
  */
 export const confirmPayment = async (
   bookingId: string,
@@ -53,6 +55,7 @@ export const confirmPayment = async (
 ): Promise<void> => {
   const bookingRef = db.collection('bookings').doc(bookingId)
 
+  // Update payment status first
   await bookingRef.update({
     isPaid: true,
     paymentIntentId,
@@ -63,6 +66,26 @@ export const confirmPayment = async (
   logger.info(`Payment confirmed for booking: ${bookingId}`, {
     paymentIntentId,
   })
+
+  // Generate Teams meeting link after payment confirmation
+  try {
+    const meetingResult = await teamsService.generateMeetingForBooking(bookingId)
+
+    logger.info(`Teams meeting generated for booking: ${bookingId}`, {
+      meetingId: meetingResult.meetingId,
+      joinUrl: meetingResult.joinUrl,
+    })
+  } catch (error: any) {
+    // Log error but don't fail payment confirmation
+    // Payment is the critical path; meeting can be generated manually
+    logger.error(`Failed to create Teams meeting for booking ${bookingId}`, {
+      error: error.message,
+      stack: error.stack,
+    })
+
+    // TODO: Could send notification to admin or add to retry queue
+    // For MVP: payment succeeds even if Teams creation fails
+  }
 }
 
 /**
