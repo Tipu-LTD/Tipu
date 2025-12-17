@@ -1,6 +1,6 @@
 import { auth } from '@/lib/firebase/config';
 
-const API_URL = 'http://localhost:8888/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8888/api';
 
 export class ApiError extends Error {
   constructor(

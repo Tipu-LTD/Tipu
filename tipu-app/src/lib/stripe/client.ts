@@ -4,10 +4,14 @@ let stripePromise: Promise<Stripe | null>;
 
 export const getStripe = () => {
   if (!stripePromise) {
-    const publishableKey = "pk_test_51SWa1gPPXCmAeaEF83KffwEfuem0kZrUINLFJtGWZy7xKPUhW8Han15hF2znlIlBbazQOzm3PxWthZDPULQdfFt400g4OCnn3e";
-    
+    const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+
+    if (!publishableKey) {
+      throw new Error('Stripe publishable key is not configured. Please set VITE_STRIPE_PUBLISHABLE_KEY in your environment variables.');
+    }
+
     stripePromise = loadStripe(publishableKey);
   }
-  
+
   return stripePromise;
 };
