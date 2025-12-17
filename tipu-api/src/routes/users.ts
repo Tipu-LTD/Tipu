@@ -21,13 +21,13 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
     }
 
     await userService.updateUserProfile(req.params.id, req.body)
-    res.json({ message: 'Profile updated successfully' })
+    return res.json({ message: 'Profile updated successfully' })
   } catch (error) {
     next(error)
   }
 })
 
-router.get('/tutors/all', authenticate, async (req, res, next) => {
+router.get('/tutors/all', authenticate, async (_req, res, next) => {
   try {
     const tutors = await userService.getAllTutors()
     res.json({ tutors })

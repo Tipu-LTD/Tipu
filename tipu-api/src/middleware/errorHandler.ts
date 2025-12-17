@@ -22,7 +22,7 @@ export const errorHandler = (
   err: Error | ApiError | ZodError,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) => {
   // Log error
   logger.error('Error occurred:', {
@@ -67,7 +67,7 @@ export const errorHandler = (
   }
 
   // Default error response
-  res.status(500).json({
+  return res.status(500).json({
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined,
   })

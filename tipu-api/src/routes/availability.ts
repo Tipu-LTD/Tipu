@@ -21,7 +21,7 @@ router.get('/tutors/:tutorId', async (req, res, next) => {
       });
     }
 
-    res.json({ availability });
+    return res.json({ availability });
   } catch (error) {
     next(error);
   }
@@ -83,7 +83,7 @@ router.post('/tutors/:tutorId', authenticate, async (req: AuthRequest, res: Resp
       data
     );
 
-    res.json({ availability });
+    return res.json({ availability });
   } catch (error) {
     next(error);
   }
@@ -117,7 +117,7 @@ router.get('/tutors/:tutorId/slots', async (req, res, next) => {
       date
     );
 
-    res.json({
+    return res.json({
       date,
       tutorId,
       slots
@@ -160,7 +160,7 @@ router.post('/tutors/:tutorId/blocked-dates', authenticate, async (req: AuthRequ
       data
     );
 
-    res.json({ availability });
+    return res.json({ availability });
   } catch (error) {
     next(error);
   }
@@ -189,7 +189,7 @@ router.delete('/tutors/:tutorId/blocked-dates/:date', authenticate, async (req: 
       date
     );
 
-    res.json({ availability });
+    return res.json({ availability });
   } catch (error) {
     next(error);
   }

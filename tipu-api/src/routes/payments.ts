@@ -82,10 +82,10 @@ router.post(
           logger.info(`Unhandled event type ${event.type}`)
       }
 
-      res.json({ received: true })
+      return res.json({ received: true })
     } catch (error: any) {
       logger.error('Error handling webhook:', error)
-      res.status(500).json({ error: error.message })
+      return res.status(500).json({ error: error.message })
     }
   }
 )

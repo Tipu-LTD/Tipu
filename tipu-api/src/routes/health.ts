@@ -27,7 +27,7 @@ const router = Router()
  *                 uptime:
  *                   type: number
  */
-router.get('/', (req, res) => {
+router.get('/', (_req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),

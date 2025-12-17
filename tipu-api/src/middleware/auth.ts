@@ -53,7 +53,7 @@ export const authenticate = async (
       role: userData?.role,
     }
 
-    next()
+    return next()
   } catch (error) {
     logger.error('Authentication error:', error)
     return res.status(401).json({
@@ -90,6 +90,6 @@ export const requireRole = (allowedRoles: string[]) => {
       })
     }
 
-    next()
+    return next()
   }
 }
