@@ -9,7 +9,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
     const user = await userService.getUserProfile(req.params.id)
     res.json(user)
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -23,7 +23,7 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res, next) => {
     await userService.updateUserProfile(req.params.id, req.body)
     return res.json({ message: 'Profile updated successfully' })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -32,7 +32,7 @@ router.get('/tutors/all', authenticate, async (_req, res, next) => {
     const tutors = await userService.getAllTutors()
     res.json({ tutors })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -41,7 +41,7 @@ router.get('/tutors/subject/:subject', authenticate, async (req, res, next) => {
     const tutors = await userService.getTutorsBySubject(req.params.subject)
     res.json({ tutors })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 

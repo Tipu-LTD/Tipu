@@ -23,7 +23,7 @@ router.get('/tutors/:tutorId', async (req, res, next) => {
 
     return res.json({ availability });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -85,7 +85,7 @@ router.post('/tutors/:tutorId', authenticate, async (req: AuthRequest, res: Resp
 
     return res.json({ availability });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -123,7 +123,7 @@ router.get('/tutors/:tutorId/slots', async (req, res, next) => {
       slots
     });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -162,7 +162,7 @@ router.post('/tutors/:tutorId/blocked-dates', authenticate, async (req: AuthRequ
 
     return res.json({ availability });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -191,7 +191,7 @@ router.delete('/tutors/:tutorId/blocked-dates/:date', authenticate, async (req: 
 
     return res.json({ availability });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
