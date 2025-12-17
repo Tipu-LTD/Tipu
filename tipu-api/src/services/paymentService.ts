@@ -76,15 +76,30 @@ export const confirmPayment = async (
       joinUrl: meetingResult.joinUrl,
     })
   } catch (error: any) {
-    // Log error but don't fail payment confirmation
-    // Payment is the critical path; meeting can be generated manually
-    logger.error(`Failed to create Teams meeting for booking ${bookingId}`, {
+    // Log detailed error information for debugging
+    logger.error(`❌ Failed to create Teams meeting for booking ${bookingId}`, {
       error: error.message,
       stack: error.stack,
+      statusCode: error.statusCode || error.status,
+      code: error.code,
+      bookingId,
+      timestamp: new Date().toISOString()
     })
 
+    // Log specific error types for easier debugging
+    if (error.statusCode === 401) {
+      logger.error('🔐 Teams API authentication failed - check MICROSOFT_CLIENT_SECRET')
+    }
+    if (error.statusCode === 403) {
+      logger.error('🚫 Teams API permission denied - check Azure AD permissions')
+    }
+    if (error.statusCode === 404) {
+      logger.error('👤 Organizer account not found - check TEAMS_ORGANIZER_EMAIL')
+    }
+
+    // Payment succeeds even if Teams fails (graceful degradation)
+    // Meeting can be generated manually via /generate-meeting endpoint
     // TODO: Could send notification to admin or add to retry queue
-    // For MVP: payment succeeds even if Teams creation fails
   }
 }
 

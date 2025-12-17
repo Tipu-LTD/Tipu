@@ -11,6 +11,7 @@ import { logger } from "./config/logger";
 import "./config/firebase"; // Firebase initializes automatically on import
 import { swaggerSpec } from "./config/swagger";
 import routes from "./routes";
+import paymentRoutes from "./routes/payments";
 import { errorHandler } from "./middleware/errorHandler";
 
 // Create Express app
@@ -53,7 +54,15 @@ app.use(
   })
 );
 
-// Body parser middleware
+// Stripe webhook route with raw body parser (MUST be before global JSON parser)
+// This is required for Stripe webhook signature verification
+app.post(
+  '/api/v1/payments/webhook',
+  express.raw({ type: 'application/json' }),
+  paymentRoutes
+);
+
+// Body parser middleware (for all other routes)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

@@ -118,29 +118,6 @@ router.post('/:id/lesson-report', authenticate, async (req: AuthRequest, res, ne
   }
 })
 
-router.patch('/:id/confirm-payment', authenticate, async (req: AuthRequest, res, next) => {
-  try {
-    const bookingRef = db.collection('bookings').doc(req.params.id)
-    const bookingDoc = await bookingRef.get()
-
-    if (!bookingDoc.exists) {
-      throw new ApiError('Booking not found', 404)
-    }
-
-    // Update booking to confirmed status
-    await bookingRef.update({
-      status: 'confirmed',
-      isPaid: true,
-      updatedAt: FieldValue.serverTimestamp(),
-    })
-
-    console.log(`Booking confirmed after payment: ${req.params.id}`)
-    res.json({ message: 'Booking confirmed successfully' })
-  } catch (error) {
-    next(error)
-  }
-})
-
 /**
  * POST /api/v1/bookings/:id/generate-meeting
  * Manually generate Teams meeting link for a booking
