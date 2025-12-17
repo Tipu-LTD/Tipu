@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { authenticate, AuthRequest } from '../middleware/auth'
 import * as bookingService from '../services/bookingService'
+import * as paymentService from '../services/paymentService'
 import * as teamsService from '../services/teamsService'
 import { db } from '../config/firebase'
 import { FieldValue } from 'firebase-admin/firestore'
@@ -113,6 +114,27 @@ router.post('/:id/lesson-report', authenticate, async (req: AuthRequest, res, ne
     })
 
     res.json({ message: 'Lesson report submitted successfully' })
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * PATCH /api/v1/bookings/:id/confirm-payment
+ * Confirm payment and update booking status
+ * Called by frontend after successful Stripe payment
+ * This will also automatically generate Teams meeting link
+ */
+router.patch('/:id/confirm-payment', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const bookingId = req.params.id
+    const paymentIntentId = req.body.paymentIntentId || 'frontend-confirmation'
+
+    // Use paymentService to confirm payment
+    // This will update booking status AND generate Teams meeting automatically
+    await paymentService.confirmPayment(bookingId, paymentIntentId)
+
+    res.json({ message: 'Booking confirmed successfully' })
   } catch (error) {
     next(error)
   }
