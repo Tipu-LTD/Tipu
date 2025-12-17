@@ -57,16 +57,17 @@ const Login = () => {
       const response = await import('@/lib/api/auth').then(m => m.authApi.getMe());
       
       toast.success(`Welcome back, ${response.user.displayName}!`);
-      
-      // Role-based redirect
+
+      // Role-based redirect with hard navigation (ensures auth state is fresh)
       const dashboardMap: Record<UserRole, string> = {
         student: '/dashboard/student',
         tutor: '/dashboard/tutor',
         parent: '/dashboard/parent',
         admin: '/dashboard/admin'
       };
-      
-      navigate(dashboardMap[response.user.role]);
+
+      // Use window.location for hard redirect to ensure auth state loads
+      window.location.href = dashboardMap[response.user.role];
     } catch (error: any) {
       const errorMessage = getAuthErrorMessage(error.code || '');
       toast.error(errorMessage);
