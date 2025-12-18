@@ -136,6 +136,94 @@ Microsoft Graph client initialized successfully
 
 If you see errors like "Missing required Microsoft Teams environment variables", double-check your `.env` file.
 
+### 6. Application Access Policy Setup (Required)
+
+**⚠️ CRITICAL:** This step is REQUIRED for the Teams integration to work. Without it, you'll get `403 Forbidden` errors.
+
+**Why Required:**
+When using Application Permissions to create meetings via the Online Meetings API, Microsoft requires an Application Access Policy to authorize the app to act on behalf of users.
+
+**Steps:**
+
+1. **Install Microsoft Teams PowerShell Module:**
+
+   Open PowerShell as Administrator and run:
+   ```powershell
+   Install-Module -Name MicrosoftTeams -Force -AllowClobber
+   ```
+
+   If you get an error about NuGet provider:
+   ```powershell
+   Install-PackageProvider -Name NuGet -Force
+   Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+   Install-Module -Name MicrosoftTeams -Force -AllowClobber
+   ```
+
+2. **Connect to Microsoft Teams:**
+   ```powershell
+   Connect-MicrosoftTeams
+   ```
+   A browser window will open - sign in with your Microsoft 365 admin account.
+
+3. **Get Your App Registration Client ID:**
+   - Go to [Azure Portal](https://portal.azure.com/)
+   - Navigate to: **Microsoft Entra ID** → **App registrations**
+   - Find your app (e.g., "Tipu Teams Integration")
+   - Copy the **Application (client) ID**
+
+   Or check your `tipu-api/.env` file for the `MICROSOFT_CLIENT_ID` value.
+
+4. **Create Application Access Policy:**
+   ```powershell
+   # Replace with your actual App Registration Client ID
+   $appId = "YOUR-APP-CLIENT-ID-HERE"
+
+   New-CsApplicationAccessPolicy -Identity "Tipu-Teams-Policy" -AppIds $appId -Description "Allow Tipu app to create Teams meetings"
+   ```
+
+5. **Grant Policy to Organizer User:**
+   ```powershell
+   # Replace with your TEAMS_ORGANIZER_EMAIL value
+   Grant-CsApplicationAccessPolicy -PolicyName "Tipu-Teams-Policy" -Identity "admin@tipu-learn.com"
+   ```
+
+   ⚠️ **Recommended:** Grant to specific user only (not globally) for better security.
+
+6. **Wait for Propagation:**
+   - **Minimum wait time:** 15 minutes
+   - **Maximum wait time:** 24 hours (rare)
+   - **Typical:** 10-20 minutes
+
+   ☕ **Do NOT test immediately** - the policy needs time to propagate across Microsoft's servers.
+
+7. **Verify Policy:**
+
+   After waiting 15+ minutes:
+   ```powershell
+   Get-CsOnlineUser -Identity "admin@tipu-learn.com" | Select-Object UserPrincipalName, ApplicationAccessPolicy
+   ```
+
+   Expected output:
+   ```
+   UserPrincipalName        ApplicationAccessPolicy
+   -----------------        -----------------------
+   admin@tipu-learn.com     Tag:Tipu-Teams-Policy
+   ```
+
+8. **Disconnect from Teams:**
+   ```powershell
+   Disconnect-MicrosoftTeams
+   ```
+
+**Troubleshooting:**
+- If you get `403 Forbidden` errors when creating meetings, ensure the policy has propagated (wait 15+ minutes)
+- Verify the App ID matches between Azure Portal and PowerShell policy
+- Check that the organizer email matches `TEAMS_ORGANIZER_EMAIL` in your `.env` file
+- Ensure API permissions have admin consent granted in Azure Portal
+
+**Reference:**
+- [Microsoft Docs: Application Access Policy](https://learn.microsoft.com/en-us/graph/cloud-communication-online-meeting-application-access-policy)
+
 ---
 
 ## How It Works
@@ -240,6 +328,16 @@ delay = baseDelay * Math.pow(2, attempt - 1)
 
 **Function:** `createTeamsMeeting()`
 **Location:** `src/services/teamsService.ts`
+
+**Microsoft Graph Endpoint:** `POST /users/{organizerUserId}/onlineMeetings`
+
+**Why Online Meetings API?**
+The implementation uses the **Online Meetings API** instead of the Calendar Events API because:
+1. Full control over `lobbyBypassSettings` to allow meetings to start without the organizer
+2. Direct meeting creation without requiring calendar event creation
+3. Service account doesn't need calendar events
+
+**Note:** Earlier versions used the Calendar Events API (`/calendar/events`), but this was changed to provide better lobby control and enable meetings to start independently.
 
 **Parameters:**
 ```typescript
@@ -642,25 +740,41 @@ curl -X POST http://localhost:8888/api/v1/bookings/abc123/generate-meeting \
 - Only student, tutor, parent, or admin can access booking data
 - Links are only visible after payment (booking status: "confirmed")
 
-**Additional Recommendations:**
-1. **Lobby Settings:** Configure Teams to require organizer approval before joining
-2. **Meeting Options:** Disable screen sharing for participants (if needed)
-3. **Recording Policies:** Set default recording permissions
-4. **Meeting Expiration:** Consider adding logic to delete meetings after completion
+**Lobby Bypass Configuration (Implemented):**
 
-**Example (Advanced - Not Implemented):**
+The Tipu platform configures Teams meetings with `lobbyBypassSettings.scope: 'everyone'` to allow meetings to start without the organizer (service account) being present.
+
+**Current Implementation:**
 ```typescript
-// Configure Teams meeting options
-const meetingOptions = {
-  lobbyBypassSettings: {
-    scope: 'organization',  // Only org users bypass lobby
-    isDialInBypassEnabled: false
-  },
-  allowedPresenters: 'organizer',  // Only organizer can present
-  allowMeetingChat: 'enabled',
-  allowTeamworkReactions: true
-};
+lobbyBypassSettings: {
+  scope: 'everyone',              // All participants can join directly
+  isDialInBypassEnabled: true     // Phone dial-in users also bypass
+},
+allowedPresenters: 'everyone',     // All participants can present
+allowMeetingChat: 'enabled',       // Enable chat
+isEntryExitAnnounced: false        // No join/leave sounds
 ```
+
+**Why `scope: 'everyone'`?**
+- **Meetings can start without organizer:** Students and tutors can begin their lesson even if the service account isn't present
+- **No lobby waiting:** Participants join directly without waiting for admission
+- **Better user experience:** Eliminates friction in starting lessons
+
+**Security Considerations:**
+- **Safe for Tipu:** Meetings are 1-on-1 (student + tutor), both pre-authenticated in the platform
+- **Meeting links are unique:** Each booking gets a unique, non-guessable meeting URL
+- **Access controlled:** Links only visible to authenticated students/tutors who booked the session
+- **Not publicly shared:** Firestore security rules prevent unauthorized access to booking data
+
+**Alternative Options (Not Used):**
+- `scope: 'organization'` - Would require both parties to be in the same Microsoft 365 organization (not feasible for Tipu)
+- `scope: 'organizer'` - Would require organizer to join first (defeats the purpose of automated meetings)
+- `scope: 'invited'` - Similar to 'everyone' but more restrictive (unnecessary for 1-on-1 meetings)
+
+**Additional Settings:**
+1. **Meeting Options:** All participants can present, enable camera/mic
+2. **Recording Policies:** Controlled by participant Teams account settings
+3. **Meeting Expiration:** Meetings remain accessible for the scheduled time slot
 
 ---
 

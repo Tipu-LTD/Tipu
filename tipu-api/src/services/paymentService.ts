@@ -46,16 +46,31 @@ export const createPaymentIntent = async (
 
 /**
  * Confirm payment and update booking
- * Called by Stripe webhook
+ * Called by Stripe webhook OR frontend after payment
  * Also generates Teams meeting link after payment confirmation
  */
 export const confirmPayment = async (
   bookingId: string,
   paymentIntentId: string
 ): Promise<void> => {
+  logger.info('💳 [PAYMENT DEBUG] confirmPayment called', {
+    bookingId,
+    paymentIntentId,
+    timestamp: new Date().toISOString(),
+  })
+
   const bookingRef = db.collection('bookings').doc(bookingId)
 
   // Update payment status first
+  logger.info('💾 [PAYMENT DEBUG] Updating booking with payment confirmation', {
+    bookingId,
+    updates: {
+      isPaid: true,
+      paymentIntentId,
+      status: 'confirmed',
+    },
+  })
+
   await bookingRef.update({
     isPaid: true,
     paymentIntentId,
@@ -63,44 +78,65 @@ export const confirmPayment = async (
     updatedAt: FieldValue.serverTimestamp(),
   })
 
-  logger.info(`Payment confirmed for booking: ${bookingId}`, {
+  logger.info('✅ [PAYMENT DEBUG] Payment confirmed in database', {
+    bookingId,
     paymentIntentId,
   })
 
   // Generate Teams meeting link after payment confirmation
+  logger.info('🚀 [PAYMENT DEBUG] Starting Teams meeting generation', {
+    bookingId,
+  })
+
   try {
     const meetingResult = await teamsService.generateMeetingForBooking(bookingId)
 
-    logger.info(`Teams meeting generated for booking: ${bookingId}`, {
+    logger.info('🎉 [PAYMENT DEBUG] Teams meeting generated successfully', {
+      bookingId,
       meetingId: meetingResult.meetingId,
       joinUrl: meetingResult.joinUrl,
+      organizerEmail: meetingResult.organizerEmail,
     })
   } catch (error: any) {
     // Log detailed error information for debugging
-    logger.error(`❌ Failed to create Teams meeting for booking ${bookingId}`, {
-      error: error.message,
-      stack: error.stack,
-      statusCode: error.statusCode || error.status,
-      code: error.code,
+    logger.error('💥 [PAYMENT DEBUG] Failed to create Teams meeting', {
       bookingId,
-      timestamp: new Date().toISOString()
+      error: {
+        message: error.message,
+        type: error.constructor.name,
+        stack: error.stack,
+        statusCode: error.statusCode || error.status,
+        code: error.code,
+        fullError: JSON.stringify(error, null, 2),
+      },
+      timestamp: new Date().toISOString(),
     })
 
     // Log specific error types for easier debugging
     if (error.statusCode === 401) {
-      logger.error('🔐 Teams API authentication failed - check MICROSOFT_CLIENT_SECRET')
+      logger.error('🔐 [PAYMENT DEBUG] Teams API authentication failed - check MICROSOFT_CLIENT_SECRET')
     }
     if (error.statusCode === 403) {
-      logger.error('🚫 Teams API permission denied - check Azure AD permissions')
+      logger.error('🚫 [PAYMENT DEBUG] Teams API permission denied - check Azure AD permissions')
     }
     if (error.statusCode === 404) {
-      logger.error('👤 Organizer account not found - check TEAMS_ORGANIZER_EMAIL')
+      logger.error('👤 [PAYMENT DEBUG] Organizer account not found - check TEAMS_ORGANIZER_EMAIL')
     }
+
+    logger.warn('⚠️ [PAYMENT DEBUG] Payment succeeded but Teams generation failed (graceful degradation)', {
+      bookingId,
+      message: 'Meeting can be generated manually via /generate-meeting endpoint',
+    })
 
     // Payment succeeds even if Teams fails (graceful degradation)
     // Meeting can be generated manually via /generate-meeting endpoint
     // TODO: Could send notification to admin or add to retry queue
   }
+
+  logger.info('✅ [PAYMENT DEBUG] confirmPayment completed', {
+    bookingId,
+    paymentIntentId,
+  })
 }
 
 /**

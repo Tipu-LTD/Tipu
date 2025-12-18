@@ -6,6 +6,7 @@ import * as teamsService from '../services/teamsService'
 import { db } from '../config/firebase'
 import { FieldValue } from 'firebase-admin/firestore'
 import { ApiError } from '../middleware/errorHandler'
+import { logger } from '../config/logger'
 
 const router = Router()
 
@@ -129,13 +130,42 @@ router.patch('/:id/confirm-payment', authenticate, async (req: AuthRequest, res,
   try {
     const bookingId = req.params.id
     const paymentIntentId = req.body.paymentIntentId || 'frontend-confirmation'
+    const userId = req.user!.uid
+    const userRole = req.user!.role
+
+    logger.info('📨 [ENDPOINT DEBUG] /confirm-payment endpoint called', {
+      bookingId,
+      paymentIntentId,
+      userId,
+      userRole,
+      requestBody: JSON.stringify(req.body),
+      timestamp: new Date().toISOString(),
+    })
+
+    logger.info('🔄 [ENDPOINT DEBUG] Calling paymentService.confirmPayment', {
+      bookingId,
+      paymentIntentId,
+    })
 
     // Use paymentService to confirm payment
     // This will update booking status AND generate Teams meeting automatically
     await paymentService.confirmPayment(bookingId, paymentIntentId)
 
+    logger.info('✅ [ENDPOINT DEBUG] Payment confirmation successful', {
+      bookingId,
+      paymentIntentId,
+    })
+
     res.json({ message: 'Booking confirmed successfully' })
-  } catch (error) {
+  } catch (error: any) {
+    logger.error('❌ [ENDPOINT DEBUG] /confirm-payment endpoint error', {
+      bookingId: req.params.id,
+      error: {
+        message: error.message,
+        type: error.constructor.name,
+        stack: error.stack,
+      },
+    })
     next(error)
   }
 })
@@ -148,29 +178,85 @@ router.patch('/:id/confirm-payment', authenticate, async (req: AuthRequest, res,
 router.post('/:id/generate-meeting', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const bookingId = req.params.id
+    const userId = req.user!.uid
+    const userRole = req.user!.role
+
+    logger.info('📨 [ENDPOINT DEBUG] /generate-meeting endpoint called', {
+      bookingId,
+      userId,
+      userRole,
+      timestamp: new Date().toISOString(),
+    })
 
     // Get booking to verify permissions
+    logger.info('🔍 [ENDPOINT DEBUG] Fetching booking for permission check', {
+      bookingId,
+    })
+
     const bookingDoc = await db.collection('bookings').doc(bookingId).get()
 
     if (!bookingDoc.exists) {
+      logger.warn('⚠️ [ENDPOINT DEBUG] Booking not found', { bookingId })
       res.status(404).json({ error: 'Booking not found' })
       return
     }
 
     const booking = bookingDoc.data()
 
-    // Verify user is either student, tutor, or admin
-    const isStudent = booking?.studentId === req.user!.uid
-    const isTutor = booking?.tutorId === req.user!.uid
-    const isAdmin = req.user!.role === 'admin'
+    logger.info('✅ [ENDPOINT DEBUG] Booking retrieved', {
+      bookingId,
+      studentId: booking?.studentId,
+      tutorId: booking?.tutorId,
+      status: booking?.status,
+      isPaid: booking?.isPaid,
+      hasMeetingLink: !!booking?.meetingLink,
+    })
 
-    if (!isStudent && !isTutor && !isAdmin) {
+    // Verify user is either student, tutor, admin, or parent of student
+    const isStudent = booking?.studentId === userId
+    const isTutor = booking?.tutorId === userId
+    const isAdmin = userRole === 'admin'
+
+    // Check if user is the parent of the student
+    let isParent = false
+    if (userRole === 'parent' && booking?.studentId) {
+      const studentDoc = await db.collection('users').doc(booking.studentId).get()
+      const student = studentDoc.data()
+      isParent = student?.parentId === userId
+
+      logger.info('👨‍👩‍👧 [ENDPOINT DEBUG] Parent check', {
+        userRole,
+        studentId: booking.studentId,
+        studentParentId: student?.parentId,
+        isParent,
+      })
+    }
+
+    logger.info('🔐 [ENDPOINT DEBUG] Permission check', {
+      isStudent,
+      isTutor,
+      isAdmin,
+      isParent,
+      allowed: isStudent || isTutor || isAdmin || isParent,
+    })
+
+    if (!isStudent && !isTutor && !isAdmin && !isParent) {
+      logger.warn('⚠️ [ENDPOINT DEBUG] Unauthorized access attempt', {
+        userId,
+        userRole,
+        bookingId,
+      })
       res.status(403).json({ error: 'Unauthorized' })
       return
     }
 
     // Verify booking is confirmed (paid)
     if (booking?.status !== 'confirmed') {
+      logger.warn('⚠️ [ENDPOINT DEBUG] Booking not confirmed', {
+        bookingId,
+        status: booking?.status,
+        isPaid: booking?.isPaid,
+      })
       res.status(400).json({
         error: 'Booking must be confirmed (paid) before generating meeting link',
       })
@@ -178,14 +264,32 @@ router.post('/:id/generate-meeting', authenticate, async (req: AuthRequest, res,
     }
 
     // Generate Teams meeting
+    logger.info('🚀 [ENDPOINT DEBUG] Calling teamsService.generateMeetingForBooking', {
+      bookingId,
+    })
+
     const meetingResult = await teamsService.generateMeetingForBooking(bookingId)
+
+    logger.info('🎉 [ENDPOINT DEBUG] Meeting generated successfully', {
+      bookingId,
+      meetingId: meetingResult.meetingId,
+      joinUrl: meetingResult.joinUrl,
+    })
 
     res.json({
       message: 'Teams meeting generated successfully',
       meetingLink: meetingResult.joinUrl,
       meetingId: meetingResult.meetingId,
     })
-  } catch (error) {
+  } catch (error: any) {
+    logger.error('❌ [ENDPOINT DEBUG] /generate-meeting endpoint error', {
+      bookingId: req.params.id,
+      error: {
+        message: error.message,
+        type: error.constructor.name,
+        stack: error.stack,
+      },
+    })
     next(error)
   }
 })

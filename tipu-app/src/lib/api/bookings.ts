@@ -75,5 +75,14 @@ export const bookingsApi = {
   confirmPayment: (id: string) =>
     apiRequest<{ message: string }>(`/v1/bookings/${id}/confirm-payment`, {
       method: 'PATCH'
+    }),
+
+  /**
+   * Manually generate Teams meeting link for a booking
+   * POST /api/v1/bookings/:id/generate-meeting
+   */
+  generateMeeting: (id: string) =>
+    apiRequest<Booking>(`/v1/bookings/${id}/generate-meeting`, {
+      method: 'POST'
     })
 };
