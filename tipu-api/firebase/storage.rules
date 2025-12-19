@@ -1,8 +1,9 @@
 rules_version = '2';
 
-// Firebase Storage Security Rules for Tipu
-// Protects recordings, resources, profile photos, and homework attachments
-// Note: Messaging is handled via WhatsApp, not in-app chat
+// Firebase Storage Security Rules for Tipu - SIMPLIFIED FOR MVP
+// Covers: tutor resources, student homework uploads, and profile photos
+// Recordings use OneDrive links (no Firebase Storage needed)
+// Messaging uses WhatsApp (no in-app chat attachments)
 
 service firebase.storage {
   match /b/{bucket}/o {
@@ -16,71 +17,25 @@ service firebase.storage {
       return request.auth.uid == userId;
     }
 
-    function hasRole(role) {
-      return isSignedIn() &&
-             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == role;
+    // Tutor Resources - Static policies/documents
+    // Admin uploads via Firebase Console, all authenticated users can read
+    match /tutor-resources/{document} {
+      allow read: if isSignedIn();  // All authenticated users can read
+      allow write: if false;  // Only admin uploads via Firebase Console
     }
 
-    function isAdmin() {
-      return hasRole('admin');
-    }
-
-    function isTutor() {
-      return hasRole('tutor');
-    }
-
-    // Lesson Recordings
-    // Only accessible to students, tutors, parents involved in the booking
-    match /recordings/{bookingId}/{fileName} {
-      allow read: if isSignedIn() && (
-        // Check if user is the student, tutor, or parent of student in this booking
-        exists(/databases/(default)/documents/bookings/$(bookingId)) &&
-        (
-          firestore.get(/databases/(default)/documents/bookings/$(bookingId)).data.studentId == request.auth.uid ||
-          firestore.get(/databases/(default)/documents/bookings/$(bookingId)).data.tutorId == request.auth.uid ||
-          isAdmin()
-        )
-      );
-
-      // Tutors and admins can upload recordings
-      allow write: if isSignedIn() && (isTutor() || isAdmin());
-    }
-
-    // Teaching Resources (guides, materials, etc.)
-    // Public to authenticated users, tutors/admins can upload
-    match /resources/{resourceId}/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && (isTutor() || isAdmin());
+    // Student Homework Uploads
+    // Students upload work to their tutor's folder, both can view
+    match /student-uploads/{tutorId}/{studentId}/{filename} {
+      allow write: if isSignedIn() && request.auth.uid == studentId;  // Students upload to their folder
+      allow read: if isSignedIn() && (request.auth.uid == tutorId || request.auth.uid == studentId);  // Tutor and student can read
     }
 
     // Profile Photos
-    // Public read, only owner can write their own photo
+    // Public read access, only owner can write their own photo
     match /profile-photos/{userId}/{fileName} {
       allow read: if true;  // Public access
-      allow write: if isOwner(userId);
-    }
-
-    // Homework Attachments
-    // Students can upload their homework, tutors can view/upload
-    match /homework/{studentId}/{fileName} {
-      allow read: if isSignedIn() && (
-        isOwner(studentId) ||
-        isTutor() ||
-        isAdmin()
-      );
-
-      allow write: if isSignedIn() && (
-        isOwner(studentId) ||
-        isTutor() ||
-        isAdmin()
-      );
-    }
-
-    // Parent Program Materials
-    // Only parents and admins can access
-    match /parent-materials/{resourceId}/{fileName} {
-      allow read: if isSignedIn() && (hasRole('parent') || isAdmin());
-      allow write: if isAdmin();
+      allow write: if isOwner(userId);  // Only owner can update
     }
 
     // Default Deny All
