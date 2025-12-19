@@ -9,6 +9,7 @@ import { ApiError } from '../middleware/errorHandler'
 import { logger } from '../config/logger'
 import { z } from 'zod'
 import { createBookingSchema, lessonReportSchema, acceptBookingSchema, declineBookingSchema } from '../schemas/booking.schema'
+import { calculateAge } from '../utils/ageCheck'
 
 const router = Router()
 
@@ -19,6 +20,24 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 
     const user = req.user!
     let studentId = user.uid // Default to current user
+
+    // ✅ CHECK AGE FOR STUDENT BOOKINGS
+    if (user.role === 'student') {
+      const userDoc = await db.collection('users').doc(user.uid).get()
+      const userData = userDoc.data()
+
+      if (userData?.dateOfBirth) {
+        const age = calculateAge(userData.dateOfBirth.toDate())
+
+        if (age < 18) {
+          return res.status(403).json({
+            error: 'Students under 18 cannot book lessons directly',
+            code: 'PARENT_BOOKING_REQUIRED',
+            message: 'Please ask your parent to book lessons for you',
+          })
+        }
+      }
+    }
 
     // If parent role and studentId provided in request, validate and use it
     if (user.role === 'parent' && validatedInput.studentId) {
