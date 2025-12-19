@@ -1,0 +1,92 @@
+rules_version = '2';
+
+// Firebase Storage Security Rules for Tipu
+// Protects recordings, resources, profile photos, and homework attachments
+// Note: Messaging is handled via WhatsApp, not in-app chat
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() &&
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    function isTutor() {
+      return hasRole('tutor');
+    }
+
+    // Lesson Recordings
+    // Only accessible to students, tutors, parents involved in the booking
+    match /recordings/{bookingId}/{fileName} {
+      allow read: if isSignedIn() && (
+        // Check if user is the student, tutor, or parent of student in this booking
+        exists(/databases/(default)/documents/bookings/$(bookingId)) &&
+        (
+          firestore.get(/databases/(default)/documents/bookings/$(bookingId)).data.studentId == request.auth.uid ||
+          firestore.get(/databases/(default)/documents/bookings/$(bookingId)).data.tutorId == request.auth.uid ||
+          isAdmin()
+        )
+      );
+
+      // Tutors and admins can upload recordings
+      allow write: if isSignedIn() && (isTutor() || isAdmin());
+    }
+
+    // Teaching Resources (guides, materials, etc.)
+    // Public to authenticated users, tutors/admins can upload
+    match /resources/{resourceId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (isTutor() || isAdmin());
+    }
+
+    // Profile Photos
+    // Public read, only owner can write their own photo
+    match /profile-photos/{userId}/{fileName} {
+      allow read: if true;  // Public access
+      allow write: if isOwner(userId);
+    }
+
+    // Homework Attachments
+    // Students can upload their homework, tutors can view/upload
+    match /homework/{studentId}/{fileName} {
+      allow read: if isSignedIn() && (
+        isOwner(studentId) ||
+        isTutor() ||
+        isAdmin()
+      );
+
+      allow write: if isSignedIn() && (
+        isOwner(studentId) ||
+        isTutor() ||
+        isAdmin()
+      );
+    }
+
+    // Parent Program Materials
+    // Only parents and admins can access
+    match /parent-materials/{resourceId}/{fileName} {
+      allow read: if isSignedIn() && (hasRole('parent') || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Default Deny All
+    // Any path not explicitly allowed above is denied
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -6,6 +6,7 @@ dotenv.config();
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
 import { logger } from "./config/logger";
 import "./config/firebase"; // Firebase initializes automatically on import
@@ -65,6 +66,47 @@ app.post(
 // Body parser middleware (for all other routes)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Rate limiting middleware
+// General API rate limit - 100 requests per 15 minutes
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // 100 requests per window per IP
+  message: 'Too many requests from this IP, please try again later',
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  handler: (req, res) => {
+    logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'You have exceeded the rate limit. Please try again later.',
+    });
+  },
+});
+
+// Strict rate limit for authentication endpoints - 5 attempts per 15 minutes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per window per IP
+  message: 'Too many authentication attempts, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    logger.warn(`Auth rate limit exceeded for IP: ${req.ip}`);
+    res.status(429).json({
+      error: 'Too many authentication attempts',
+      message: 'You have exceeded the authentication rate limit. Please try again in 15 minutes.',
+    });
+  },
+});
+
+// Apply rate limiting to API routes
+app.use('/api/', apiLimiter);
+
+// Apply stricter rate limiting to auth endpoints
+// Note: These must be defined before the main routes to take precedence
+app.use('/api/v1/auth/login', authLimiter);
+app.use('/api/v1/auth/register', authLimiter);
 
 // Swagger documentation (root path)
 app.use("/", swaggerUi.serve);

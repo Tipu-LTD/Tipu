@@ -170,15 +170,28 @@ export const declineBooking = async (input: DeclineBookingInput): Promise<void> 
 
 /**
  * Submit lesson report
+ * Only the assigned tutor can submit a lesson report
  */
 export const submitLessonReport = async (
   input: SubmitLessonReportInput
 ): Promise<void> => {
   const bookingRef = db.collection('bookings').doc(input.bookingId)
-  const booking = await bookingRef.get()
+  const bookingDoc = await bookingRef.get()
 
-  if (!booking.exists) {
+  if (!bookingDoc.exists) {
     throw new ApiError('Booking not found', 404)
+  }
+
+  const booking = bookingDoc.data() as Booking
+
+  // Authorization check: Only the assigned tutor can submit lesson report
+  if (booking.tutorId !== input.tutorId) {
+    throw new ApiError('Only the assigned tutor can submit a lesson report', 403)
+  }
+
+  // Can only submit report for confirmed bookings
+  if (booking.status !== 'confirmed') {
+    throw new ApiError('Cannot submit report for unconfirmed booking', 400)
   }
 
   await bookingRef.update({
@@ -192,7 +205,7 @@ export const submitLessonReport = async (
     updatedAt: FieldValue.serverTimestamp(),
   })
 
-  logger.info(`Lesson report submitted: ${input.bookingId}`)
+  logger.info(`Lesson report submitted: ${input.bookingId} by tutor: ${input.tutorId}`)
 }
 
 /**

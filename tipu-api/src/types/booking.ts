@@ -55,6 +55,7 @@ export interface DeclineBookingInput {
 
 export interface SubmitLessonReportInput {
   bookingId: string
+  tutorId: string  // Required for authorization
   topicsCovered: string
   homework?: string
   notes?: string

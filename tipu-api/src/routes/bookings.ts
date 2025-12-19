@@ -7,41 +7,52 @@ import { db } from '../config/firebase'
 import { FieldValue } from 'firebase-admin/firestore'
 import { ApiError } from '../middleware/errorHandler'
 import { logger } from '../config/logger'
+import { z } from 'zod'
+import { createBookingSchema, lessonReportSchema, acceptBookingSchema, declineBookingSchema } from '../schemas/booking.schema'
 
 const router = Router()
 
 router.post('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    // Validate input
+    const validatedInput = createBookingSchema.parse(req.body)
+
     const user = req.user!
     let studentId = user.uid // Default to current user
 
     // If parent role and studentId provided in request, validate and use it
-    if (user.role === 'parent' && req.body.studentId) {
+    if (user.role === 'parent' && validatedInput.studentId) {
       // Fetch parent's children to validate
       const userDoc = await db.collection('users').doc(user.uid).get()
       const childrenIds = userDoc.data()?.childrenIds || []
 
-      if (!childrenIds.includes(req.body.studentId)) {
+      if (!childrenIds.includes(validatedInput.studentId)) {
         throw new ApiError('You can only create bookings for your registered children', 403)
       }
 
-      studentId = req.body.studentId
+      studentId = validatedInput.studentId
     }
     // If student role, always use their own ID (ignore any provided studentId)
     // This prevents students from creating bookings for other students
 
     const booking = await bookingService.createBooking({
       studentId,
-      tutorId: req.body.tutorId,
-      subject: req.body.subject,
-      level: req.body.level,
-      scheduledAt: new Date(req.body.scheduledAt),
-      price: req.body.price,
-      duration: req.body.duration,
+      tutorId: validatedInput.tutorId,
+      subject: validatedInput.subject,
+      level: validatedInput.level,
+      scheduledAt: new Date(validatedInput.scheduledAt),
+      price: validatedInput.price,
+      duration: validatedInput.duration,
     })
 
     res.status(201).json(booking)
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: error.errors,
+      })
+    }
     next(error)
   }
 })
@@ -93,29 +104,48 @@ router.post('/:id/accept', authenticate, async (req: AuthRequest, res, next) => 
 
 router.post('/:id/decline', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    // Validate input
+    const validatedInput = declineBookingSchema.parse(req.body)
+
     await bookingService.declineBooking({
       bookingId: req.params.id,
       tutorId: req.user!.uid,
-      reason: req.body.reason,
+      reason: validatedInput.reason,
     })
 
     res.json({ message: 'Booking declined' })
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: error.errors,
+      })
+    }
     next(error)
   }
 })
 
 router.post('/:id/lesson-report', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    // Validate input
+    const validatedInput = lessonReportSchema.parse(req.body)
+
     await bookingService.submitLessonReport({
       bookingId: req.params.id,
-      topicsCovered: req.body.topicsCovered,
-      homework: req.body.homework,
-      notes: req.body.notes,
+      tutorId: req.user!.uid,  // Pass authenticated user's ID for authorization
+      topicsCovered: validatedInput.topicsCovered,
+      homework: validatedInput.homework,
+      notes: validatedInput.notes,
     })
 
     res.json({ message: 'Lesson report submitted successfully' })
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: error.errors,
+      })
+    }
     next(error)
   }
 })

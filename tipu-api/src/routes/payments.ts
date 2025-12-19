@@ -7,6 +7,10 @@ import { Request, Response } from 'express'
 
 const router = Router()
 
+// In-memory cache for processed payment intents (prevents duplicate processing)
+// In production, consider using Redis for distributed systems
+const processedPayments = new Set<string>()
+
 router.post('/create-intent', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const { bookingId, amount, currency } = req.body
@@ -68,10 +72,27 @@ router.post(
       switch (event.type) {
         case 'payment_intent.succeeded':
           const paymentIntent = event.data.object as any
+          const paymentIntentId = paymentIntent.id
           const { bookingId } = paymentIntent.metadata
 
-          await paymentService.confirmPayment(bookingId, paymentIntent.id)
+          // Check if payment already processed (idempotency)
+          if (processedPayments.has(paymentIntentId)) {
+            logger.info(`Payment ${paymentIntentId} already processed (idempotent), skipping`)
+            return res.sendStatus(200)
+          }
+
+          // Process payment
+          await paymentService.confirmPayment(bookingId, paymentIntentId)
           logger.info(`Payment succeeded for booking ${bookingId}`)
+
+          // Mark as processed
+          processedPayments.add(paymentIntentId)
+
+          // Clean up after 24 hours to prevent memory growth
+          setTimeout(() => {
+            processedPayments.delete(paymentIntentId)
+            logger.debug(`Removed processed payment ${paymentIntentId} from cache`)
+          }, 24 * 60 * 60 * 1000)
           break
 
         case 'payment_intent.payment_failed':
