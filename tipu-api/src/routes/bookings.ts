@@ -144,6 +144,92 @@ router.post('/:id/decline', authenticate, async (req: AuthRequest, res, next) =>
   }
 })
 
+router.post('/:id/approve-suggestion', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const parentId = req.user!.uid
+    const bookingId = req.params.id
+
+    if (req.user!.role !== 'parent') {
+      throw new ApiError('Only parents can approve lesson suggestions', 403)
+    }
+
+    const bookingDoc = await db.collection('bookings').doc(bookingId).get()
+
+    if (!bookingDoc.exists) {
+      throw new ApiError('Booking not found', 404)
+    }
+
+    const booking = bookingDoc.data()
+
+    // Verify parent owns the student
+    const studentDoc = await db.collection('users').doc(booking?.studentId).get()
+    const student = studentDoc.data()
+
+    if (student?.parentId !== parentId) {
+      throw new ApiError('Not authorized to approve this booking', 403)
+    }
+
+    if (booking?.status !== 'tutor-suggested') {
+      throw new ApiError('Booking is not awaiting approval', 400)
+    }
+
+    // Update to pending (awaiting payment)
+    await db.collection('bookings').doc(bookingId).update({
+      status: 'pending',
+      approvedBy: parentId,
+      approvedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+
+    res.json({ message: 'Lesson approved, proceed to payment' })
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.post('/:id/decline-suggestion', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const parentId = req.user!.uid
+    const bookingId = req.params.id
+    const { reason } = req.body
+
+    if (req.user!.role !== 'parent') {
+      throw new ApiError('Only parents can decline lesson suggestions', 403)
+    }
+
+    const bookingDoc = await db.collection('bookings').doc(bookingId).get()
+
+    if (!bookingDoc.exists) {
+      throw new ApiError('Booking not found', 404)
+    }
+
+    const booking = bookingDoc.data()
+
+    // Verify parent owns the student
+    const studentDoc = await db.collection('users').doc(booking?.studentId).get()
+    const student = studentDoc.data()
+
+    if (student?.parentId !== parentId) {
+      throw new ApiError('Not authorized to decline this booking', 403)
+    }
+
+    if (booking?.status !== 'tutor-suggested') {
+      throw new ApiError('Booking is not awaiting approval', 400)
+    }
+
+    // Update to declined
+    await db.collection('bookings').doc(bookingId).update({
+      status: 'declined',
+      declineReason: reason || 'Declined by parent',
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+
+    res.json({ message: 'Lesson suggestion declined' })
+  } catch (error) {
+    next(error)
+  }
+})
+
 router.post('/:id/lesson-report', authenticate, async (req: AuthRequest, res, next) => {
   try {
     // Validate input

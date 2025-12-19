@@ -1,7 +1,7 @@
 import { Timestamp } from 'firebase-admin/firestore'
 import { Subject, Level } from './user'
 
-export type BookingStatus = 'pending' | 'accepted' | 'confirmed' | 'completed' | 'cancelled' | 'declined'
+export type BookingStatus = 'pending' | 'accepted' | 'confirmed' | 'completed' | 'cancelled' | 'declined' | 'tutor-suggested'
 
 export interface LessonReport {
   topicsCovered: string
@@ -27,6 +27,14 @@ export interface Booking {
   recordingUrl?: string
   lessonReport?: LessonReport
   declineReason?: string
+
+  // Tutor-initiated booking fields
+  initiatedBy?: 'student' | 'parent' | 'tutor'
+  suggestedAt?: Timestamp
+  approvedBy?: string  // Parent UID who approved
+  approvedAt?: Timestamp
+  tutorNotes?: string  // Notes from tutor when suggesting
+
   createdAt: Timestamp
   updatedAt: Timestamp
 }
@@ -59,4 +67,18 @@ export interface SubmitLessonReportInput {
   topicsCovered: string
   homework?: string
   notes?: string
+}
+
+export interface SuggestLessonInput {
+  studentId: string
+  subject: Subject
+  level: Level
+  scheduledAt: Date
+  duration?: number
+  notes?: string  // Optional notes for parent
+}
+
+export interface ApproveSuggestionInput {
+  bookingId: string
+  parentId: string
 }
