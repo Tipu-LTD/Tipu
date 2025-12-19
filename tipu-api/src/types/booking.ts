@@ -35,6 +35,16 @@ export interface Booking {
   approvedAt?: Timestamp
   tutorNotes?: string  // Notes from tutor when suggesting
 
+  // Reschedule tracking
+  rescheduledBy?: string  // User UID who rescheduled
+  rescheduledAt?: Timestamp
+
+  // Cancellation tracking
+  cancelledBy?: string  // User UID who cancelled
+  cancelledAt?: Timestamp
+  cancellationReason?: string
+  refundId?: string  // Stripe refund ID if applicable
+
   createdAt: Timestamp
   updatedAt: Timestamp
 }
@@ -81,4 +91,18 @@ export interface SuggestLessonInput {
 export interface ApproveSuggestionInput {
   bookingId: string
   parentId: string
+}
+
+export interface RescheduleBookingInput {
+  bookingId: string
+  userId: string
+  userRole: string
+  newScheduledAt: Date
+}
+
+export interface CancelBookingInput {
+  bookingId: string
+  userId: string
+  userRole: string
+  reason?: string
 }

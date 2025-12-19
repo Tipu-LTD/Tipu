@@ -10,6 +10,7 @@ import { logger } from '../config/logger'
 import { z } from 'zod'
 import { createBookingSchema, lessonReportSchema, acceptBookingSchema, declineBookingSchema } from '../schemas/booking.schema'
 import { calculateAge } from '../utils/ageCheck'
+import { stripe } from '../config/stripe'
 
 const router = Router()
 
@@ -425,6 +426,174 @@ router.post('/:id/generate-meeting', authenticate, async (req: AuthRequest, res,
         stack: error.stack,
       },
     })
+    next(error)
+  }
+})
+
+/**
+ * POST /api/v1/bookings/:id/reschedule
+ * Reschedule a booking to a new time
+ * Authorized: tutor, student (18+), parent of student, or admin
+ */
+router.post('/:id/reschedule', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.uid
+    const userRole = req.user!.role
+    const bookingId = req.params.id
+    const { newScheduledAt } = req.body
+
+    if (!newScheduledAt) {
+      throw new ApiError('New scheduled date/time is required', 400)
+    }
+
+    const bookingDoc = await db.collection('bookings').doc(bookingId).get()
+
+    if (!bookingDoc.exists) {
+      throw new ApiError('Booking not found', 404)
+    }
+
+    const booking = bookingDoc.data()
+
+    // Check authorization
+    let isAuthorized = false
+
+    if (userRole === 'admin') {
+      isAuthorized = true
+    } else if (userRole === 'tutor' && booking?.tutorId === userId) {
+      isAuthorized = true
+    } else if (userRole === 'student' && booking?.studentId === userId) {
+      // Check if student is 18+
+      const studentDoc = await db.collection('users').doc(userId).get()
+      const studentData = studentDoc.data()
+      if (studentData?.dateOfBirth) {
+        const age = calculateAge(studentData.dateOfBirth.toDate())
+        isAuthorized = age >= 18
+      }
+    } else if (userRole === 'parent') {
+      // Check if parent owns the student
+      const studentDoc = await db.collection('users').doc(booking?.studentId).get()
+      const student = studentDoc.data()
+      isAuthorized = student?.parentId === userId
+    }
+
+    if (!isAuthorized) {
+      throw new ApiError('Not authorized to reschedule this booking', 403)
+    }
+
+    // Can't reschedule completed or cancelled bookings
+    if (['completed', 'cancelled'].includes(booking?.status || '')) {
+      throw new ApiError('Cannot reschedule completed or cancelled bookings', 400)
+    }
+
+    // Update booking
+    await db.collection('bookings').doc(bookingId).update({
+      scheduledAt: new Date(newScheduledAt),
+      rescheduledBy: userId,
+      rescheduledAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+
+    res.json({ message: 'Booking rescheduled successfully' })
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * POST /api/v1/bookings/:id/cancel
+ * Cancel a booking (with refund if paid)
+ * Authorized: tutor, student (18+), parent of student, or admin
+ */
+router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.uid
+    const userRole = req.user!.role
+    const bookingId = req.params.id
+    const { reason } = req.body
+
+    const bookingDoc = await db.collection('bookings').doc(bookingId).get()
+
+    if (!bookingDoc.exists) {
+      throw new ApiError('Booking not found', 404)
+    }
+
+    const booking = bookingDoc.data()
+
+    // Check authorization
+    let isAuthorized = false
+
+    if (userRole === 'admin') {
+      isAuthorized = true
+    } else if (userRole === 'tutor' && booking?.tutorId === userId) {
+      isAuthorized = true
+    } else if (userRole === 'student' && booking?.studentId === userId) {
+      // Check if student is 18+
+      const studentDoc = await db.collection('users').doc(userId).get()
+      const studentData = studentDoc.data()
+      if (studentData?.dateOfBirth) {
+        const age = calculateAge(studentData.dateOfBirth.toDate())
+        isAuthorized = age >= 18
+      }
+    } else if (userRole === 'parent') {
+      // Check if parent owns the student
+      const studentDoc = await db.collection('users').doc(booking?.studentId).get()
+      const student = studentDoc.data()
+      isAuthorized = student?.parentId === userId
+    }
+
+    if (!isAuthorized) {
+      throw new ApiError('Not authorized to cancel this booking', 403)
+    }
+
+    // Can't cancel completed bookings
+    if (booking?.status === 'completed') {
+      throw new ApiError('Cannot cancel completed bookings', 400)
+    }
+
+    // Already cancelled
+    if (booking?.status === 'cancelled') {
+      throw new ApiError('Booking is already cancelled', 400)
+    }
+
+    // Process refund if paid
+    let refundId = null
+    if (booking?.isPaid && booking?.paymentIntentId) {
+      try {
+        const refund = await stripe.refunds.create({
+          payment_intent: booking.paymentIntentId,
+          reason: 'requested_by_customer',
+        })
+        refundId = refund.id
+
+        logger.info('Refund processed for cancelled booking', {
+          bookingId,
+          paymentIntentId: booking.paymentIntentId,
+          refundId,
+        })
+      } catch (error: any) {
+        logger.error('Failed to process refund for booking', {
+          bookingId,
+          error: error.message,
+        })
+        throw new ApiError('Failed to process refund. Please contact support.', 500)
+      }
+    }
+
+    // Update booking
+    await db.collection('bookings').doc(bookingId).update({
+      status: 'cancelled',
+      cancelledBy: userId,
+      cancelledAt: FieldValue.serverTimestamp(),
+      cancellationReason: reason || 'No reason provided',
+      refundId,
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+
+    res.json({
+      message: 'Booking cancelled successfully',
+      refunded: !!refundId,
+    })
+  } catch (error) {
     next(error)
   }
 })
