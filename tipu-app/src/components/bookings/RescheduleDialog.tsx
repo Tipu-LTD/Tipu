@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import { parseFirestoreDate } from '@/utils/date';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,7 +73,7 @@ export function RescheduleDialog({
               <span className="font-medium">Current time:</span>
             </div>
             <p className="mt-1 text-sm">
-              {format(new Date(booking.scheduledAt), 'PPP p')}
+              {format(parseFirestoreDate(booking.scheduledAt), 'PPP p')}
             </p>
           </div>
 
