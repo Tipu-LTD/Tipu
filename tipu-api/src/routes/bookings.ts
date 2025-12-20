@@ -570,6 +570,26 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
       throw new ApiError('Not authorized to cancel this booking', 403)
     }
 
+    // Calculate hours until lesson
+    const scheduledAt = booking?.scheduledAt?.toDate?.() || new Date()
+    const hoursUntilLesson = (scheduledAt.getTime() - Date.now()) / (1000 * 60 * 60)
+
+    // Check if user is parent or student
+    const isParentOrStudent = userRole === 'parent' || userRole === 'student'
+
+    // Enforce 24-hour cancellation window for parents/students
+    if (isParentOrStudent && hoursUntilLesson < 24 && hoursUntilLesson > 0) {
+      throw new ApiError(
+        `Cannot cancel within 24 hours of lesson. Only ${hoursUntilLesson.toFixed(1)} hours remaining. Please contact your tutor directly.`,
+        403
+      )
+    }
+
+    // Require cancellation reason from tutors
+    if (userRole === 'tutor' && (!reason || reason.trim().length < 10)) {
+      throw new ApiError('Tutors must provide a cancellation reason (minimum 10 characters)', 400)
+    }
+
     // Can't cancel completed bookings
     if (booking?.status === 'completed') {
       throw new ApiError('Cannot cancel completed bookings', 400)

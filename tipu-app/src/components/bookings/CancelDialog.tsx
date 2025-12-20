@@ -8,7 +8,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { bookingsApi } from '@/lib/api/bookings';
 import { Booking } from '@/types/booking';
-import { AlertCircle, Info } from 'lucide-react';
+import { AlertCircle, Info, Clock } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { parseFirestoreDate } from '@/utils/date';
 
 interface CancelDialogProps {
   open: boolean;
@@ -22,7 +24,24 @@ export function CancelDialog({
   booking
 }: CancelDialogProps) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [reason, setReason] = useState('');
+
+  // Calculate hours until lesson
+  const scheduledAt = parseFirestoreDate(booking.scheduledAt);
+  const hoursUntilLesson = (scheduledAt.getTime() - Date.now()) / (1000 * 60 * 60);
+
+  // Check if user can cancel
+  const isTutor = user?.role === 'tutor';
+  const isAdmin = user?.role === 'admin';
+  const isParentOrStudent = user?.role === 'parent' || user?.role === 'student';
+
+  // Parents/students can only cancel 24+ hours before lesson
+  const canCancel = isAdmin || isTutor || (isParentOrStudent && hoursUntilLesson >= 24);
+
+  // Tutors must provide a reason (minimum 10 characters)
+  const reasonRequired = isTutor;
+  const reasonValid = !reasonRequired || (reason.trim().length >= 10);
 
   const cancelMutation = useMutation({
     mutationFn: (data: { reason?: string }) =>
@@ -64,8 +83,20 @@ export function CancelDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* 24-Hour Warning for Parents/Students */}
+          {isParentOrStudent && !canCancel && hoursUntilLesson > 0 && (
+            <Alert variant="destructive">
+              <Clock className="h-4 w-4" />
+              <AlertDescription>
+                You cannot cancel within 24 hours of the lesson. Only {hoursUntilLesson.toFixed(1)} hours remaining.
+                <br />
+                <span className="font-medium">Please contact your tutor directly if you need to cancel.</span>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Refund Alert */}
-          {booking.isPaid && (
+          {booking.isPaid && canCancel && (
             <Alert>
               <Info className="h-4 w-4" />
               <AlertDescription>
@@ -86,13 +117,22 @@ export function CancelDialog({
 
           {/* Reason Input */}
           <div className="space-y-2">
-            <Label>Reason (optional)</Label>
+            <Label>
+              Reason {reasonRequired && <span className="text-red-500">*</span>}
+              {!reasonRequired && <span className="text-muted-foreground text-sm">(optional)</span>}
+            </Label>
             <Textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Why are you cancelling this lesson?"
+              placeholder={isTutor ? "Please explain why you need to cancel (minimum 10 characters)" : "Why are you cancelling this lesson?"}
               rows={3}
+              disabled={!canCancel}
             />
+            {reasonRequired && reason.trim().length > 0 && reason.trim().length < 10 && (
+              <p className="text-sm text-red-500">
+                Reason must be at least 10 characters ({reason.trim().length}/10)
+              </p>
+            )}
           </div>
 
           {/* Actions */}
@@ -109,7 +149,12 @@ export function CancelDialog({
               onClick={handleSubmit}
               variant="destructive"
               className="flex-1"
-              disabled={cancelMutation.isPending || booking.status === 'completed'}
+              disabled={
+                cancelMutation.isPending ||
+                booking.status === 'completed' ||
+                !canCancel ||
+                !reasonValid
+              }
             >
               {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Lesson'}
             </Button>
