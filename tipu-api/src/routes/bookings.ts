@@ -485,13 +485,39 @@ router.post('/:id/reschedule', authenticate, async (req: AuthRequest, res, next)
       throw new ApiError('Cannot reschedule completed or cancelled bookings', 400)
     }
 
+    // Recalculate payment scheduled time if not yet paid
+    const newScheduledDate = new Date(newScheduledAt)
+    const now = new Date()
+    const hoursUntilLesson = (newScheduledDate.getTime() - now.getTime()) / (1000 * 60 * 60)
+
+    const paymentScheduledFor = hoursUntilLesson < 24
+      ? null
+      : new Date(newScheduledDate.getTime() - (24 * 60 * 60 * 1000))
+
     // Update booking
-    await db.collection('bookings').doc(bookingId).update({
+    const updateData: any = {
       scheduledAt: new Date(newScheduledAt),
       rescheduledBy: userId,
       rescheduledAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-    })
+    }
+
+    // Reset payment attempt if not yet paid (allows payment to be retried at new scheduled time)
+    if (!booking?.isPaid) {
+      updateData.paymentScheduledFor = paymentScheduledFor
+      updateData.paymentAttempted = false
+      updateData.paymentError = null
+      updateData.paymentRetryCount = 0
+
+      logger.info('Recalculated payment schedule for rescheduled booking', {
+        bookingId,
+        newScheduledAt,
+        paymentScheduledFor: paymentScheduledFor?.toISOString() || 'immediate',
+        hoursUntilLesson: hoursUntilLesson.toFixed(1),
+      })
+    }
+
+    await db.collection('bookings').doc(bookingId).update(updateData)
 
     // If booking is confirmed (has meeting link), regenerate it for the new time
     if (booking?.status === 'confirmed' && booking?.meetingLink) {

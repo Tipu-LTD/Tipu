@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { Calendar, Clock, AlertCircle } from 'lucide-react';
+import { Calendar, Clock, AlertCircle, Info } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -140,6 +140,11 @@ export function BookingModal({ open, onOpenChange, tutor }: BookingModalProps) {
 
   const totalPrice = calculatePrice();
 
+  // Calculate if booking is less than 24 hours away
+  const hoursUntilLesson = selectedDateTime
+    ? (selectedDateTime.getTime() - Date.now()) / (1000 * 60 * 60)
+    : Infinity;
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -258,6 +263,26 @@ export function BookingModal({ open, onOpenChange, tutor }: BookingModalProps) {
                 </span>
               </div>
             </Card>
+
+            {/* Deferred Payment Message */}
+            {selectedDateTime && (
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  {hoursUntilLesson < 24 ? (
+                    <>
+                      <strong>Payment required now:</strong> This booking is less than 24 hours away,
+                      so payment will be taken immediately after the tutor accepts.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Payment scheduled:</strong> Payment will be automatically taken 24 hours
+                      before your lesson. You can cancel for free up to 24 hours before.
+                    </>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
 
             <Button
               onClick={handleDetailsSubmit}

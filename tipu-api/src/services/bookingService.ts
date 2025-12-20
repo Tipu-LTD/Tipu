@@ -10,6 +10,17 @@ import { FieldValue } from 'firebase-admin/firestore'
 export const createBooking = async (input: CreateBookingInput): Promise<Booking> => {
   const bookingRef = db.collection('bookings').doc()
 
+  // Calculate payment scheduled time (24 hours before lesson)
+  const scheduledAt = input.scheduledAt
+  const now = new Date()
+  const hoursUntilLesson = (scheduledAt.getTime() - now.getTime()) / (1000 * 60 * 60)
+
+  // If booking is less than 24 hours away, payment is immediate (handled in frontend)
+  // Otherwise, payment scheduled for 24 hours before lesson
+  const paymentScheduledFor = hoursUntilLesson < 24
+    ? null  // Immediate payment required
+    : new Date(scheduledAt.getTime() - (24 * 60 * 60 * 1000))
+
   const booking: Booking = {
     id: bookingRef.id,
     studentId: input.studentId,
@@ -21,22 +32,37 @@ export const createBooking = async (input: CreateBookingInput): Promise<Booking>
     status: 'pending',
     price: input.price,
     isPaid: false,
+
+    // Deferred payment fields
+    paymentScheduledFor: paymentScheduledFor ? (FieldValue.serverTimestamp() as any) : null,
+    paymentAttempted: false,
+    paymentRetryCount: 0,
+
     createdAt: FieldValue.serverTimestamp() as any,
     updatedAt: FieldValue.serverTimestamp() as any,
   }
 
-  // Set the actual scheduled time
+  // Set the actual scheduled times
   await bookingRef.set({
     ...booking,
     scheduledAt: input.scheduledAt,
+    paymentScheduledFor: paymentScheduledFor,
   })
 
-  logger.info(`Booking created: ${bookingRef.id}`, {
+  logger.info(`Booking created with ${paymentScheduledFor ? 'deferred' : 'immediate'} payment`, {
+    bookingId: bookingRef.id,
     studentId: input.studentId,
     tutorId: input.tutorId,
+    scheduledAt: input.scheduledAt.toISOString(),
+    paymentScheduledFor: paymentScheduledFor?.toISOString() || 'immediate',
+    hoursUntilLesson: hoursUntilLesson.toFixed(1),
   })
 
-  return { ...booking, scheduledAt: input.scheduledAt as any }
+  return {
+    ...booking,
+    scheduledAt: input.scheduledAt as any,
+    paymentScheduledFor: paymentScheduledFor as any,
+  }
 }
 
 /**

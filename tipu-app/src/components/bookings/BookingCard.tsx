@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { Calendar, Clock, User, BookOpen } from 'lucide-react';
+import { Calendar, Clock, User, BookOpen, AlertCircle, CreditCard } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Booking, BookingStatus } from '@/types/booking';
 import { penceToPounds } from '@/utils/currency';
 import { parseFirestoreDate } from '@/utils/date';
@@ -101,6 +102,35 @@ export function BookingCard({
           <span className="font-semibold">{penceToPounds(booking.price)}</span>
           <span className="text-sm text-muted-foreground">{booking.duration}h</span>
         </div>
+
+        {/* Payment Schedule Info for Accepted Bookings */}
+        {booking.status === 'accepted' && !booking.isPaid && (
+          <Alert className="mt-2">
+            <CreditCard className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              {booking.paymentScheduledFor ? (
+                <>
+                  Payment will be taken on{' '}
+                  <strong>{format(parseFirestoreDate(booking.paymentScheduledFor), 'PPP')}</strong>
+                </>
+              ) : (
+                <strong>Payment required before lesson</strong>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Payment Error Alert */}
+        {booking.paymentError && (
+          <Alert variant="destructive" className="mt-2">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              Payment failed: {booking.paymentError}
+              <br />
+              <span className="font-medium">Please update your payment method</span>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {booking.meetingLink && booking.status === 'confirmed' && !isPastLesson && (
           <Button variant="outline" className="w-full" asChild>

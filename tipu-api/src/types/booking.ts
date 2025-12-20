@@ -45,6 +45,19 @@ export interface Booking {
   cancellationReason?: string
   refundId?: string  // Stripe refund ID if applicable
 
+  // Deferred payment tracking
+  paymentScheduledFor?: Timestamp  // When payment should be taken (24h before lesson)
+  paymentAttempted?: boolean        // Has payment been attempted (idempotency)
+  paymentAttemptedAt?: Timestamp    // When payment was attempted
+  paymentError?: string             // User-facing error message if payment failed
+  paymentRetryCount?: number        // Number of retry attempts (max 3)
+  lastPaymentRetryAt?: Timestamp    // Last retry timestamp
+
+  // Notification tracking
+  paymentReminderSent?: boolean     // 48h reminder sent
+  paymentDueSoonSent?: boolean      // 24h reminder sent
+  paymentFailureNotificationSent?: boolean  // Failure notification sent
+
   createdAt: Timestamp
   updatedAt: Timestamp
 }
