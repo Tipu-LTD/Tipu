@@ -55,6 +55,9 @@ export function BookingCard({
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
 
+  // Check if lesson is in the past
+  const isPastLesson = parseFirestoreDate(booking.scheduledAt) < new Date();
+
   const displayName = tutorName || studentName;
   const displayPhoto = tutorPhoto || studentPhoto;
   const initials = displayName?.split(' ').map(n => n[0]).join('').toUpperCase() || '?';
@@ -99,7 +102,7 @@ export function BookingCard({
           <span className="text-sm text-muted-foreground">{booking.duration}h</span>
         </div>
 
-        {booking.meetingLink && booking.status === 'confirmed' && (
+        {booking.meetingLink && booking.status === 'confirmed' && !isPastLesson && (
           <Button variant="outline" className="w-full" asChild>
             <a href={booking.meetingLink} target="_blank" rel="noopener noreferrer">
               Join Meeting
@@ -119,8 +122,8 @@ export function BookingCard({
             </div>
           )}
 
-          {/* Show reschedule/cancel for pending or confirmed bookings */}
-          {(booking.status === 'pending' || booking.status === 'confirmed') && (
+          {/* Show reschedule/cancel for pending or confirmed bookings (only if not past) */}
+          {(booking.status === 'pending' || booking.status === 'confirmed') && !isPastLesson && (
             <div className="flex gap-2">
               <Button
                 onClick={() => setRescheduleOpen(true)}

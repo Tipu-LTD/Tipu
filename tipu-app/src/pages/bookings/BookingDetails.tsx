@@ -60,6 +60,9 @@ export default function BookingDetails() {
     }
   });
 
+  // Check if lesson is in the past
+  const isPastLesson = booking ? parseFirestoreDate(booking.scheduledAt) < new Date() : false;
+
   if (isLoading) {
     return (
       <DashboardLayout>
@@ -283,7 +286,7 @@ export default function BookingDetails() {
         </div>
 
         {/* Actions */}
-        {(booking.status === 'pending' || booking.status === 'confirmed') && (
+        {(booking.status === 'pending' || booking.status === 'confirmed') && !isPastLesson && (
           <Card>
             <CardHeader>
               <CardTitle>Actions</CardTitle>
