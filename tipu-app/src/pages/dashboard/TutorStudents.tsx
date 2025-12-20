@@ -45,6 +45,7 @@ export default function TutorStudents() {
   };
 
   const handleUploadResource = (student: StudentProfile) => {
+    alert('🔍 BUTTON CLICKED! Student: ' + student.displayName);
     console.log('🔍 Upload button clicked for student:', student);
     console.log('🔍 Student data:', JSON.stringify(student, null, 2));
     setSelectedUploadStudent(student);
