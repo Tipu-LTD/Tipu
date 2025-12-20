@@ -34,6 +34,14 @@ export interface LessonReportData {
   notes?: string;
 }
 
+export interface RescheduleBookingData {
+  newScheduledAt: string; // ISO datetime string
+}
+
+export interface CancelBookingData {
+  reason?: string;
+}
+
 export const bookingsApi = {
   create: (data: CreateBookingData) =>
     apiRequest<Booking>('/v1/bookings', {
@@ -84,5 +92,17 @@ export const bookingsApi = {
   generateMeeting: (id: string) =>
     apiRequest<Booking>(`/v1/bookings/${id}/generate-meeting`, {
       method: 'POST'
+    }),
+
+  reschedule: (id: string, data: RescheduleBookingData) =>
+    apiRequest<{ message: string }>(`/v1/bookings/${id}/reschedule`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  cancel: (id: string, data: CancelBookingData) =>
+    apiRequest<{ message: string; refunded: boolean }>(`/v1/bookings/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify(data)
     })
 };

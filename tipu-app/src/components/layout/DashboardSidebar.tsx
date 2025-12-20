@@ -35,6 +35,7 @@ const navigationByRole: Record<UserRole, NavItem[]> = {
     { to: '/dashboard/tutor', icon: Home, label: 'Dashboard' },
     { to: '/bookings/requests', icon: Bell, label: 'Booking Requests' },
     { to: '/bookings/schedule', icon: Calendar, label: 'My Schedule' },
+    { to: '/dashboard/students', icon: Users, label: 'My Students' },
     // TODO: Implement chat system
     // { to: '/chat', icon: MessageSquare, label: 'Messages' },
     // TODO: Implement resources library

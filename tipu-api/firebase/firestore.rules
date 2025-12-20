@@ -219,6 +219,38 @@ service cloud.firestore {
     }
 
     // ============================================
+    // RESOURCES COLLECTION
+    // ============================================
+    match /resources/{resourceId} {
+      // Read access:
+      // - Tutor who uploaded the resource
+      // - Student who the resource is for
+      // - Parent of the student
+      // - Admins
+      allow read: if isSignedIn() && (
+        resource.data.uploadedBy == request.auth.uid ||
+        resource.data.studentId == request.auth.uid ||
+        hasRole('admin') ||
+        isParentOfStudent(resource.data.studentId)
+      );
+
+      // Create access:
+      // - Only tutors can create resources
+      // - Must be uploading for themselves
+      allow create: if isSignedIn() &&
+        request.auth.uid == request.resource.data.uploadedBy &&
+        hasRole('tutor');
+
+      // Update/Delete access:
+      // - Only the tutor who uploaded can update/delete
+      // - Admins can also update/delete
+      allow update, delete: if isSignedIn() && (
+        resource.data.uploadedBy == request.auth.uid ||
+        hasRole('admin')
+      );
+    }
+
+    // ============================================
     // DEFAULT DENY
     // ============================================
     // Any collection not explicitly allowed above is denied

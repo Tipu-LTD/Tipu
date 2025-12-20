@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { resourcesApi } from '@/lib/api/resources';
@@ -43,11 +43,7 @@ export function UploadResourceDialog({
   studentId,
   studentName,
 }: UploadResourceDialogProps) {
-  console.log('🔍 UploadResourceDialog RENDER');
-  console.log('🔍 Props:', { open, studentId, studentName });
-
   const { currentUser } = useAuth();
-  console.log('🔍 currentUser:', currentUser?.uid);
 
   const queryClient = useQueryClient();
 
@@ -59,13 +55,6 @@ export function UploadResourceDialog({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadState, setUploadState] = useState<UploadState>('idle');
-
-  useEffect(() => {
-    console.log('🔍 UploadResourceDialog MOUNTED', { open, studentId });
-    return () => {
-      console.log('🔍 UploadResourceDialog UNMOUNTED');
-    };
-  }, [open, studentId]);
 
   const createResourceMutation = useMutation({
     mutationFn: resourcesApi.createResource,
@@ -81,21 +70,17 @@ export function UploadResourceDialog({
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('🔍 File input changed');
     const file = e.target.files?.[0];
-    console.log('🔍 Selected file:', file?.name, file?.size);
 
     if (!file) return;
 
     if (file.size > MAX_FILE_SIZE) {
-      console.log('❌ File too large:', file.size, 'Max:', MAX_FILE_SIZE);
       toast.error('File size must be less than 100MB');
       e.target.value = '';
       return;
     }
 
     setSelectedFile(file);
-    console.log('✅ File set successfully');
   };
 
   const handleClose = () => {
@@ -112,25 +97,17 @@ export function UploadResourceDialog({
   };
 
   const handleUpload = async () => {
-    console.log('🔍 handleUpload called');
-    console.log('🔍 selectedFile:', selectedFile?.name);
-    console.log('🔍 title:', title);
-    console.log('🔍 currentUser:', currentUser?.uid);
-
     if (!selectedFile || !title.trim()) {
-      console.log('❌ Validation failed - missing file or title');
       toast.error('Please provide a title and select a file');
       return;
     }
 
     if (!currentUser) {
-      console.log('❌ No current user');
       toast.error('You must be logged in to upload resources');
       return;
     }
 
     try {
-      console.log('🔍 Starting upload...');
       setUploadState('uploading');
 
       // Upload to Firebase Storage
@@ -164,9 +141,8 @@ export function UploadResourceDialog({
 
   const isUploading = uploadState !== 'idle';
 
-  try {
-    return (
-      <Dialog open={open} onOpenChange={isUploading ? undefined : onOpenChange}>
+  return (
+    <Dialog open={open} onOpenChange={isUploading ? undefined : onOpenChange}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
           <DialogTitle>Upload Resource for {studentName}</DialogTitle>
@@ -262,7 +238,6 @@ export function UploadResourceDialog({
                 <SelectValue placeholder="Select level..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">None</SelectItem>
                 <SelectItem value="GCSE">GCSE</SelectItem>
                 <SelectItem value="A-Level">A-Level</SelectItem>
               </SelectContent>
@@ -324,9 +299,5 @@ export function UploadResourceDialog({
         </div>
       </DialogContent>
     </Dialog>
-    );
-  } catch (error) {
-    console.error('❌ Error rendering UploadResourceDialog:', error);
-    return null;
-  }
+  );
 }

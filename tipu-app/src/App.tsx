@@ -16,6 +16,7 @@ import TutorProfile from "./pages/TutorProfile";
 import DashboardRouter from "./pages/dashboard/DashboardRouter";
 import StudentDashboard from "./pages/dashboard/StudentDashboard";
 import TutorDashboard from "./pages/dashboard/TutorDashboard";
+import TutorStudents from "./pages/dashboard/TutorStudents";
 import ParentDashboard from "./pages/dashboard/ParentDashboard";
 import AdminDashboard from "./pages/dashboard/AdminDashboard";
 import StudentBookings from "./pages/bookings/StudentBookings";
@@ -77,7 +78,13 @@ const App = () => (
                 <TutorDashboard />
               </ProtectedRoute>
             } />
-            
+
+            <Route path="/dashboard/students" element={
+              <ProtectedRoute allowedRoles={['tutor']}>
+                <TutorStudents />
+              </ProtectedRoute>
+            } />
+
             <Route path="/dashboard/parent" element={
               <ProtectedRoute allowedRoles={['parent']}>
                 <ParentDashboard />

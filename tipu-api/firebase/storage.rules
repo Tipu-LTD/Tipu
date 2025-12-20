@@ -17,11 +17,11 @@ service firebase.storage {
       return request.auth.uid == userId;
     }
 
-    // Tutor Resources - Static policies/documents
-    // Admin uploads via Firebase Console, all authenticated users can read
-    match /tutor-resources/{document} {
+    // Tutor Resources - Lesson recordings, guides, notes
+    // Tutors upload resources for specific students
+    match /tutor-resources/{tutorId}/{studentId}/{filename} {
+      allow write: if isSignedIn() && request.auth.uid == tutorId;  // Tutors upload to their student folders
       allow read: if isSignedIn();  // All authenticated users can read
-      allow write: if false;  // Only admin uploads via Firebase Console
     }
 
     // Student Homework Uploads

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { format } from 'date-fns';
 import { Calendar, Clock, User, BookOpen } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -7,6 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Booking, BookingStatus } from '@/types/booking';
 import { penceToPounds } from '@/utils/currency';
 import { parseFirestoreDate } from '@/utils/date';
+import { RescheduleDialog } from './RescheduleDialog';
+import { CancelDialog } from './CancelDialog';
 
 interface BookingCardProps {
   booking: Booking;
@@ -49,6 +52,9 @@ export function BookingCard({
   onAccept,
   onDecline
 }: BookingCardProps) {
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+
   const displayName = tutorName || studentName;
   const displayPhoto = tutorPhoto || studentPhoto;
   const initials = displayName?.split(' ').map(n => n[0]).join('').toUpperCase() || '?';
@@ -101,22 +107,57 @@ export function BookingCard({
           </Button>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
           {showActions && booking.status === 'pending' && onAccept && onDecline && (
-            <>
+            <div className="flex gap-2">
               <Button onClick={() => onAccept(booking.id)} className="flex-1">
                 Accept
               </Button>
               <Button onClick={() => onDecline(booking.id)} variant="destructive" className="flex-1">
                 Decline
               </Button>
-            </>
+            </div>
           )}
-          <Button onClick={() => onViewDetails(booking.id)} variant="outline" className="flex-1">
+
+          {/* Show reschedule/cancel for pending or confirmed bookings */}
+          {(booking.status === 'pending' || booking.status === 'confirmed') && (
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setRescheduleOpen(true)}
+                variant="outline"
+                size="sm"
+                className="flex-1"
+              >
+                Reschedule
+              </Button>
+              <Button
+                onClick={() => setCancelOpen(true)}
+                variant="outline"
+                size="sm"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          <Button onClick={() => onViewDetails(booking.id)} variant="outline" className="w-full">
             View Details
           </Button>
         </div>
       </CardContent>
+
+      {/* Dialogs */}
+      <RescheduleDialog
+        open={rescheduleOpen}
+        onOpenChange={setRescheduleOpen}
+        booking={booking}
+      />
+      <CancelDialog
+        open={cancelOpen}
+        onOpenChange={setCancelOpen}
+        booking={booking}
+      />
     </Card>
   );
 }
