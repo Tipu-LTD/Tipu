@@ -29,7 +29,13 @@ export function RescheduleDialog({
     mutationFn: (data: { newScheduledAt: string }) =>
       bookingsApi.reschedule(booking.id, data),
     onSuccess: () => {
-      toast.success('Lesson rescheduled successfully');
+      // Show different message based on whether booking was confirmed (has meeting link)
+      const message = booking.status === 'confirmed'
+        ? 'Lesson rescheduled! A new meeting link has been generated.'
+        : 'Lesson rescheduled successfully';
+
+      toast.success(message);
+
       // Invalidate multiple queries that might show this booking
       queryClient.invalidateQueries({ queryKey: ['tutor-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['student-bookings'] });

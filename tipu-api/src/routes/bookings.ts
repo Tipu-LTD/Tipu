@@ -493,6 +493,31 @@ router.post('/:id/reschedule', authenticate, async (req: AuthRequest, res, next)
       updatedAt: FieldValue.serverTimestamp(),
     })
 
+    // If booking is confirmed (has meeting link), regenerate it for the new time
+    if (booking?.status === 'confirmed' && booking?.meetingLink) {
+      try {
+        logger.info('Regenerating Teams meeting link for rescheduled booking', {
+          bookingId,
+          oldScheduledAt: booking.scheduledAt?.toDate?.()?.toISOString(),
+          newScheduledAt,
+        })
+
+        // This will create a new meeting and update the booking with the new link
+        await teamsService.generateMeetingForBooking(bookingId)
+
+        logger.info('Successfully regenerated meeting link for rescheduled booking', {
+          bookingId,
+        })
+      } catch (error: any) {
+        // Don't fail the reschedule if meeting generation fails
+        // Just log the error and continue
+        logger.error('Failed to regenerate meeting link for rescheduled booking', {
+          bookingId,
+          error: error.message,
+        })
+      }
+    }
+
     res.json({ message: 'Booking rescheduled successfully' })
   } catch (error) {
     next(error)
