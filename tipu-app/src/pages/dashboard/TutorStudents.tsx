@@ -35,14 +35,21 @@ export default function TutorStudents() {
     retry: 2
   });
 
+  console.log('🔍 TutorStudents - students data:', students);
+  console.log('🔍 TutorStudents - uploadDialogOpen:', uploadDialogOpen);
+  console.log('🔍 TutorStudents - selectedUploadStudent:', selectedUploadStudent);
+
   const handleSuggestLesson = (studentId: string) => {
     setSelectedStudentId(studentId);
     setSuggestDialogOpen(true);
   };
 
   const handleUploadResource = (student: StudentProfile) => {
+    console.log('🔍 Upload button clicked for student:', student);
+    console.log('🔍 Student data:', JSON.stringify(student, null, 2));
     setSelectedUploadStudent(student);
     setUploadDialogOpen(true);
+    console.log('🔍 Dialog state updated - should be open now');
   };
 
   return (
@@ -174,14 +181,19 @@ export default function TutorStudents() {
       )}
 
       {/* Upload Resource Dialog */}
-      {selectedUploadStudent && (
-        <UploadResourceDialog
-          open={uploadDialogOpen}
-          onOpenChange={setUploadDialogOpen}
-          studentId={selectedUploadStudent.uid}
-          studentName={selectedUploadStudent.displayName}
-        />
-      )}
+      {(() => {
+        console.log('🔍 Rendering UploadResourceDialog section');
+        console.log('🔍 selectedUploadStudent:', selectedUploadStudent);
+        console.log('🔍 uploadDialogOpen:', uploadDialogOpen);
+        return selectedUploadStudent && (
+          <UploadResourceDialog
+            open={uploadDialogOpen}
+            onOpenChange={setUploadDialogOpen}
+            studentId={selectedUploadStudent.uid}
+            studentName={selectedUploadStudent.displayName}
+          />
+        );
+      })()}
     </DashboardLayout>
   );
 }
