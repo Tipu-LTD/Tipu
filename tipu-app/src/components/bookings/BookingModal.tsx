@@ -100,7 +100,7 @@ export function BookingModal({ open, onOpenChange, tutor }: BookingModalProps) {
         level: selectedLevel,
         scheduledAt: selectedDateTime.toISOString(),
         price: priceInPence,
-        duration: selectedDuration,
+        duration: selectedDuration * 60, // Convert hours to minutes for API
         ...(user?.role === 'parent' && selectedChildId && { studentId: selectedChildId })
       };
 
