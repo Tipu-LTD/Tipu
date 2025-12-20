@@ -53,23 +53,33 @@ router.get('/my-students', authenticate, async (req: AuthRequest, res, next) => 
         const studentId = doc.id
 
         // Calculate statistics
+        const now = new Date()
         const totalLessons = bookingsSnapshot.docs.filter(
           (b) => b.data().studentId === studentId && b.data().status === 'completed'
         ).length
 
         const upcomingLessons = bookingsSnapshot.docs.filter(
-          (b) => b.data().studentId === studentId && b.data().status === 'confirmed'
+          (b) => b.data().studentId === studentId &&
+                 b.data().status === 'confirmed' &&
+                 b.data().scheduledAt.toDate() >= now
         ).length
 
         return {
           uid: studentId,
-          email: studentData.email,
-          displayName: studentData.displayName,
+          email: studentData.email || '',
+          displayName: studentData.displayName || 'Unknown Student',
           photoURL: studentData.photoURL,
           enrolledSubjects: studentData.enrolledSubjects || [],
           totalLessons,
           upcomingLessons,
         }
+      })
+      .sort((a, b) => {
+        // Sort by upcoming lessons (descending), then total lessons (descending)
+        if (b.upcomingLessons !== a.upcomingLessons) {
+          return b.upcomingLessons - a.upcomingLessons;
+        }
+        return b.totalLessons - a.totalLessons;
       })
 
     res.json(students)
