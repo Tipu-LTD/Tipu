@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { ArrowLeft, Calendar, Clock, User, BookOpen, Link as LinkIcon, FileText, Video } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, User, BookOpen, FileText } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,7 +31,6 @@ export default function BookingDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
-  const queryClient = useQueryClient();
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
 
@@ -51,13 +50,6 @@ export default function BookingDetails() {
     queryKey: ['student', booking?.studentId],
     queryFn: () => usersApi.getById(booking!.studentId),
     enabled: !!booking?.studentId
-  });
-
-  const generateMeetingMutation = useMutation({
-    mutationFn: () => bookingsApi.generateMeeting(id!),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['booking', id]);
-    }
   });
 
   // Check if lesson is in the past
@@ -104,46 +96,6 @@ export default function BookingDetails() {
             {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
           </Badge>
         </div>
-
-        {/* Dev Button - Only visible in development mode */}
-        {import.meta.env.DEV && (
-          <Card className="border-yellow-400 bg-yellow-50/50">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-xs font-mono bg-yellow-200 px-2 py-1 rounded font-semibold">
-                  DEV MODE
-                </span>
-                <span className="text-sm text-yellow-800 font-semibold">
-                  Force Generate Meeting Link
-                </span>
-              </div>
-              <p className="text-xs text-yellow-700 mb-4">
-                Manually triggers Teams meeting creation (bypasses payment/status checks).
-                This button is only visible in development mode.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => generateMeetingMutation.mutate()}
-                disabled={generateMeetingMutation.isPending}
-                className="border-yellow-400 hover:bg-yellow-100 text-yellow-900"
-              >
-                <Video className="h-4 w-4 mr-2" />
-                {generateMeetingMutation.isPending ? 'Generating...' : 'Generate Meeting Link'}
-              </Button>
-              {generateMeetingMutation.isError && (
-                <p className="text-sm text-red-600 mt-3">
-                  Failed to generate meeting link. Check server logs for details.
-                </p>
-              )}
-              {generateMeetingMutation.isSuccess && !generateMeetingMutation.isPending && (
-                <p className="text-sm text-green-600 mt-3 font-medium">
-                  ✓ Meeting link generated successfully! Check the Meeting Link card below.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        )}
 
         <div className="grid gap-6 md:grid-cols-2">
           {/* Main Details */}
@@ -227,23 +179,6 @@ export default function BookingDetails() {
               )}
             </CardContent>
           </Card>
-
-          {/* Meeting Link */}
-          {booking.meetingLink && booking.status === 'confirmed' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Meeting Link</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Button className="w-full" asChild>
-                  <a href={booking.meetingLink} target="_blank" rel="noopener noreferrer">
-                    <LinkIcon className="h-4 w-4 mr-2" />
-                    Join Meeting
-                  </a>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
 
           {/* Lesson Report */}
           {booking.lessonReport && (
