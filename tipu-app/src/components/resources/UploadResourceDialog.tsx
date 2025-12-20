@@ -43,7 +43,7 @@ export function UploadResourceDialog({
   studentId,
   studentName,
 }: UploadResourceDialogProps) {
-  const { currentUser } = useAuth();
+  const { user } = useAuth();
 
   const queryClient = useQueryClient();
 
@@ -102,7 +102,7 @@ export function UploadResourceDialog({
       return;
     }
 
-    if (!currentUser) {
+    if (!user) {
       toast.error('You must be logged in to upload resources');
       return;
     }
@@ -113,7 +113,7 @@ export function UploadResourceDialog({
       // Upload to Firebase Storage
       const fileUrl = await uploadResourceFile(
         selectedFile,
-        currentUser.uid,
+        user.uid,
         studentId,
         (progress) => setUploadProgress(progress.progress)
       );
