@@ -78,6 +78,7 @@ export function BookingCard({
       toast.success('Reschedule approved! Booking updated.');
       queryClient.invalidateQueries({ queryKey: ['tutor-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['parent-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
     },
     onError: (error: any) => {
@@ -91,6 +92,7 @@ export function BookingCard({
       toast.success('Reschedule request declined');
       queryClient.invalidateQueries({ queryKey: ['tutor-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['parent-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
     },
     onError: (error: any) => {

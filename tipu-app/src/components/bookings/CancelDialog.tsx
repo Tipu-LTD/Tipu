@@ -55,6 +55,7 @@ export function CancelDialog({
       // Invalidate multiple queries
       queryClient.invalidateQueries({ queryKey: ['tutor-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['parent-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       handleClose();
     },

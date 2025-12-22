@@ -34,6 +34,7 @@ export function RescheduleDialog({
       // Invalidate multiple queries that might show this booking
       queryClient.invalidateQueries({ queryKey: ['tutor-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['parent-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
       handleClose();
     },
