@@ -50,3 +50,22 @@ export function parseFirestoreDate(timestamp: any): Date {
   if (timestamp?._seconds) return new Date(timestamp._seconds * 1000);
   return new Date(timestamp);
 }
+
+/**
+ * Format duration in minutes to human-readable hours
+ * @param minutes - Duration in minutes (e.g., 60, 90, 120)
+ * @returns Formatted string (e.g., "1 hour", "1.5 hours", "2 hours")
+ */
+export function formatDuration(minutes: number): string {
+  const hours = minutes / 60;
+
+  if (hours === 1) {
+    return '1 hour';
+  } else if (hours % 1 === 0) {
+    // Whole number of hours (e.g., 2, 3, 4)
+    return `${hours} hours`;
+  } else {
+    // Fractional hours (e.g., 1.5, 2.5)
+    return `${hours} hours`;
+  }
+}

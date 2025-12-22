@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { bookingsApi } from '@/lib/api/bookings';
 import { usersApi } from '@/lib/api/users';
-import { parseFirestoreDate } from '@/utils/date';
+import { parseFirestoreDate, formatDuration } from '@/utils/date';
 import { format } from 'date-fns';
 import { penceToPounds } from '@/utils/currency';
 import { Calendar, Clock, User } from 'lucide-react';
@@ -104,7 +104,7 @@ const TutorSchedule = () => {
                   </div>
                   <div className="flex items-center gap-1">
                     <Clock className="h-4 w-4" />
-                    {format(parseFirestoreDate(booking.scheduledAt), 'p')} ({booking.duration}min)
+                    {format(parseFirestoreDate(booking.scheduledAt), 'p')} ({formatDuration(booking.duration)})
                   </div>
                 </div>
                 
