@@ -115,5 +115,24 @@ export const bookingsApi = {
     apiRequest<{ message: string; refunded: boolean }>(`/v1/bookings/${id}/cancel`, {
       method: 'POST',
       body: JSON.stringify(data)
+    }),
+
+  /**
+   * Approve a tutor-suggested lesson (parent accepts the suggestion)
+   * POST /api/v1/bookings/:id/approve-suggestion
+   */
+  approveSuggestion: (id: string) =>
+    apiRequest<{ message: string }>(`/v1/bookings/${id}/approve-suggestion`, {
+      method: 'POST'
+    }),
+
+  /**
+   * Decline a tutor-suggested lesson (parent rejects the suggestion)
+   * POST /api/v1/bookings/:id/decline-suggestion
+   */
+  declineSuggestion: (id: string, reason?: string) =>
+    apiRequest<{ message: string }>(`/v1/bookings/${id}/decline-suggestion`, {
+      method: 'POST',
+      body: JSON.stringify({ reason })
     })
 };

@@ -30,6 +30,7 @@ interface BookingCardProps {
 
 const statusColors: Record<BookingStatus, string> = {
   pending: 'bg-yellow-500',
+  'tutor-suggested': 'bg-blue-500',
   accepted: 'bg-green-500',
   confirmed: 'bg-blue-500',
   completed: 'bg-green-500',
@@ -39,6 +40,7 @@ const statusColors: Record<BookingStatus, string> = {
 
 const statusLabels: Record<BookingStatus, string> = {
   pending: 'Pending',
+  'tutor-suggested': 'Awaiting Approval',
   accepted: 'Accepted',
   confirmed: 'Confirmed',
   completed: 'Completed',
@@ -217,7 +219,7 @@ export function BookingCard({
         )}
 
         <div className="flex flex-col gap-2">
-          {showActions && booking.status === 'pending' && onAccept && onDecline && (
+          {showActions && (booking.status === 'pending' || booking.status === 'tutor-suggested') && onAccept && onDecline && (
             <div className="flex gap-2">
               <Button onClick={() => onAccept(booking.id)} className="flex-1">
                 Accept

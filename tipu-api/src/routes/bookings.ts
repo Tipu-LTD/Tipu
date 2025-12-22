@@ -174,12 +174,36 @@ router.post('/:id/approve-suggestion', authenticate, async (req: AuthRequest, re
       throw new ApiError('Booking is not awaiting approval', 400)
     }
 
-    // Update to pending (awaiting payment)
+    // Calculate hours until lesson
+    const scheduledDate = booking.scheduledAt.toDate
+      ? booking.scheduledAt.toDate()
+      : new Date(booking.scheduledAt)
+    const now = new Date()
+    const hoursUntilLesson = (scheduledDate.getTime() - now.getTime()) / (1000 * 60 * 60)
+
+    // Calculate payment schedule (24h before lesson, or immediate if less than 24h)
+    const paymentScheduledFor = hoursUntilLesson < 24
+      ? null  // Immediate payment
+      : new Date(scheduledDate.getTime() - (24 * 60 * 60 * 1000))  // 24h before
+
+    // Update to pending (awaiting payment) with payment schedule
     await db.collection('bookings').doc(bookingId).update({
       status: 'pending',
       approvedBy: parentId,
       approvedAt: FieldValue.serverTimestamp(),
+      paymentScheduledFor: paymentScheduledFor,  // Schedule deferred payment
+      paymentAttempted: false,                   // Reset payment tracking
+      paymentError: null,
+      paymentRetryCount: 0,
       updatedAt: FieldValue.serverTimestamp(),
+    })
+
+    logger.info('Parent approved tutor suggestion, payment scheduled', {
+      bookingId,
+      parentId,
+      scheduledAt: scheduledDate.toISOString(),
+      paymentScheduledFor: paymentScheduledFor?.toISOString() || 'immediate',
+      hoursUntilLesson: hoursUntilLesson.toFixed(1)
     })
 
     res.json({ message: 'Lesson approved, proceed to payment' })

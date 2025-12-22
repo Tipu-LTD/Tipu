@@ -1,4 +1,4 @@
-export type BookingStatus = 'pending' | 'accepted' | 'confirmed' | 'completed' | 'cancelled' | 'declined';
+export type BookingStatus = 'pending' | 'accepted' | 'confirmed' | 'completed' | 'cancelled' | 'declined' | 'tutor-suggested';
 
 export type Subject = 'Maths' | 'Physics' | 'Computer Science' | 'Python';
 
@@ -40,6 +40,14 @@ export interface Booking {
   rescheduleRequest?: RescheduleRequest;
   paymentScheduledFor?: any;  // Firestore Timestamp
   paymentError?: string;
+
+  // Tutor-suggested booking fields
+  initiatedBy?: 'student' | 'parent' | 'tutor';
+  tutorNotes?: string;
+  suggestedAt?: any;  // Firestore Timestamp
+  approvedBy?: string;
+  approvedAt?: any;  // Firestore Timestamp
+
   createdAt: Date;
   updatedAt: Date;
 }
