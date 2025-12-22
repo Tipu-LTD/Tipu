@@ -11,6 +11,16 @@ export interface LessonReport {
   completedAt: Date;
 }
 
+export interface RescheduleRequest {
+  requestedBy: string;
+  requestedAt: any;  // Firestore Timestamp
+  newScheduledAt: any;  // Firestore Timestamp
+  status: 'pending' | 'approved' | 'declined';
+  respondedBy?: string;
+  respondedAt?: any;  // Firestore Timestamp
+  declineReason?: string;
+}
+
 export interface Booking {
   id: string;
   studentId: string;
@@ -27,6 +37,9 @@ export interface Booking {
   recordingUrl?: string;
   lessonReport?: LessonReport;
   declineReason?: string;
+  rescheduleRequest?: RescheduleRequest;
+  paymentScheduledFor?: any;  // Firestore Timestamp
+  paymentError?: string;
   createdAt: Date;
   updatedAt: Date;
 }

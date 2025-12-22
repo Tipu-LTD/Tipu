@@ -431,11 +431,11 @@ router.post('/:id/generate-meeting', authenticate, async (req: AuthRequest, res,
 })
 
 /**
- * POST /api/v1/bookings/:id/reschedule
- * Reschedule a booking to a new time
+ * POST /api/v1/bookings/:id/request-reschedule
+ * Request to reschedule a booking (requires approval from other party)
  * Authorized: tutor, student (18+), parent of student, or admin
  */
-router.post('/:id/reschedule', authenticate, async (req: AuthRequest, res, next) => {
+router.post('/:id/request-reschedule', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const userId = req.user!.uid
     const userRole = req.user!.role
@@ -480,71 +480,250 @@ router.post('/:id/reschedule', authenticate, async (req: AuthRequest, res, next)
       throw new ApiError('Not authorized to reschedule this booking', 403)
     }
 
-    // Can't reschedule completed or cancelled bookings
-    if (['completed', 'cancelled'].includes(booking?.status || '')) {
-      throw new ApiError('Cannot reschedule completed or cancelled bookings', 400)
+    // Can't reschedule completed, cancelled, or declined bookings
+    if (['completed', 'cancelled', 'declined'].includes(booking?.status || '')) {
+      throw new ApiError('Cannot reschedule completed, cancelled, or declined bookings', 400)
     }
 
-    // Recalculate payment scheduled time if not yet paid
-    const newScheduledDate = new Date(newScheduledAt)
+    // Check if there's already a pending reschedule request
+    if (booking?.rescheduleRequest?.status === 'pending') {
+      throw new ApiError('There is already a pending reschedule request for this booking', 400)
+    }
+
+    // Create reschedule request
+    const rescheduleRequest = {
+      requestedBy: userId,
+      requestedAt: FieldValue.serverTimestamp(),
+      newScheduledAt: new Date(newScheduledAt),
+      status: 'pending' as const
+    }
+
+    await db.collection('bookings').doc(bookingId).update({
+      rescheduleRequest,
+      updatedAt: FieldValue.serverTimestamp()
+    })
+
+    logger.info('Reschedule request created', {
+      bookingId,
+      requestedBy: userId,
+      currentScheduledAt: booking?.scheduledAt?.toDate?.()?.toISOString(),
+      proposedScheduledAt: newScheduledAt
+    })
+
+    res.json({
+      message: 'Reschedule request sent. Awaiting approval from the other party.',
+      rescheduleRequest
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * POST /api/v1/bookings/:id/approve-reschedule
+ * Approve a pending reschedule request
+ * Authorized: The OTHER party (not the requester)
+ */
+router.post('/:id/approve-reschedule', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.uid
+    const userRole = req.user!.role
+    const bookingId = req.params.id
+
+    const bookingDoc = await db.collection('bookings').doc(bookingId).get()
+
+    if (!bookingDoc.exists) {
+      throw new ApiError('Booking not found', 404)
+    }
+
+    const booking = bookingDoc.data()
+
+    // Must have a pending reschedule request
+    if (!booking?.rescheduleRequest || booking.rescheduleRequest.status !== 'pending') {
+      throw new ApiError('No pending reschedule request found', 400)
+    }
+
+    const rescheduleRequest = booking.rescheduleRequest
+
+    // Cannot approve your own request
+    if (rescheduleRequest.requestedBy === userId) {
+      throw new ApiError('You cannot approve your own reschedule request', 403)
+    }
+
+    // Check authorization - must be the OTHER party
+    let isAuthorized = false
+
+    if (userRole === 'admin') {
+      isAuthorized = true
+    } else if (userRole === 'tutor' && booking.tutorId === userId) {
+      isAuthorized = true
+    } else if (userRole === 'student' && booking.studentId === userId) {
+      // Check if student is 18+
+      const studentDoc = await db.collection('users').doc(userId).get()
+      const studentData = studentDoc.data()
+      if (studentData?.dateOfBirth) {
+        const age = calculateAge(studentData.dateOfBirth.toDate())
+        isAuthorized = age >= 18
+      }
+    } else if (userRole === 'parent') {
+      // Check if parent owns the student
+      const studentDoc = await db.collection('users').doc(booking.studentId).get()
+      const student = studentDoc.data()
+      isAuthorized = student?.parentId === userId
+    }
+
+    if (!isAuthorized) {
+      throw new ApiError('Not authorized to approve this reschedule request', 403)
+    }
+
+    // Update booking with new scheduled time
+    const newScheduledDate = rescheduleRequest.newScheduledAt.toDate()
     const now = new Date()
     const hoursUntilLesson = (newScheduledDate.getTime() - now.getTime()) / (1000 * 60 * 60)
 
-    const paymentScheduledFor = hoursUntilLesson < 24
-      ? null
-      : new Date(newScheduledDate.getTime() - (24 * 60 * 60 * 1000))
-
-    // Update booking
     const updateData: any = {
-      scheduledAt: new Date(newScheduledAt),
-      rescheduledBy: userId,
+      scheduledAt: rescheduleRequest.newScheduledAt,
+      rescheduledBy: rescheduleRequest.requestedBy,
       rescheduledAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
+      'rescheduleRequest.status': 'approved',
+      'rescheduleRequest.respondedBy': userId,
+      'rescheduleRequest.respondedAt': FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
     }
 
-    // Reset payment attempt if not yet paid (allows payment to be retried at new scheduled time)
-    if (!booking?.isPaid) {
+    // Recalculate payment schedule if not yet paid
+    if (!booking.isPaid) {
+      const paymentScheduledFor = hoursUntilLesson < 24
+        ? null
+        : new Date(newScheduledDate.getTime() - (24 * 60 * 60 * 1000))
+
       updateData.paymentScheduledFor = paymentScheduledFor
       updateData.paymentAttempted = false
       updateData.paymentError = null
       updateData.paymentRetryCount = 0
 
-      logger.info('Recalculated payment schedule for rescheduled booking', {
+      logger.info('Recalculated payment schedule for approved reschedule', {
         bookingId,
-        newScheduledAt,
+        newScheduledAt: newScheduledDate.toISOString(),
         paymentScheduledFor: paymentScheduledFor?.toISOString() || 'immediate',
-        hoursUntilLesson: hoursUntilLesson.toFixed(1),
+        hoursUntilLesson: hoursUntilLesson.toFixed(1)
       })
     }
 
     await db.collection('bookings').doc(bookingId).update(updateData)
 
-    // If booking is confirmed (has meeting link), regenerate it for the new time
-    if (booking?.status === 'confirmed' && booking?.meetingLink) {
+    // Regenerate Teams meeting link if booking is confirmed
+    if (booking.status === 'confirmed' && booking.meetingLink) {
       try {
-        logger.info('Regenerating Teams meeting link for rescheduled booking', {
+        logger.info('Regenerating Teams meeting link for approved reschedule', {
           bookingId,
           oldScheduledAt: booking.scheduledAt?.toDate?.()?.toISOString(),
-          newScheduledAt,
+          newScheduledAt: newScheduledDate.toISOString()
         })
 
-        // This will create a new meeting and update the booking with the new link
         await teamsService.generateMeetingForBooking(bookingId)
 
-        logger.info('Successfully regenerated meeting link for rescheduled booking', {
-          bookingId,
+        logger.info('Successfully regenerated meeting link for approved reschedule', {
+          bookingId
         })
       } catch (error: any) {
-        // Don't fail the reschedule if meeting generation fails
-        // Just log the error and continue
-        logger.error('Failed to regenerate meeting link for rescheduled booking', {
+        logger.error('Failed to regenerate meeting link for approved reschedule', {
           bookingId,
-          error: error.message,
+          error: error.message
         })
+        // Don't fail the approval if meeting generation fails
       }
     }
 
-    res.json({ message: 'Booking rescheduled successfully' })
+    logger.info('Reschedule request approved', {
+      bookingId,
+      approvedBy: userId,
+      newScheduledAt: newScheduledDate.toISOString()
+    })
+
+    res.json({
+      message: 'Reschedule approved successfully',
+      newScheduledAt: newScheduledDate
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * POST /api/v1/bookings/:id/decline-reschedule
+ * Decline a pending reschedule request
+ * Authorized: The OTHER party (not the requester)
+ */
+router.post('/:id/decline-reschedule', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const userId = req.user!.uid
+    const userRole = req.user!.role
+    const bookingId = req.params.id
+    const { reason } = req.body
+
+    const bookingDoc = await db.collection('bookings').doc(bookingId).get()
+
+    if (!bookingDoc.exists) {
+      throw new ApiError('Booking not found', 404)
+    }
+
+    const booking = bookingDoc.data()
+
+    // Must have a pending reschedule request
+    if (!booking?.rescheduleRequest || booking.rescheduleRequest.status !== 'pending') {
+      throw new ApiError('No pending reschedule request found', 400)
+    }
+
+    const rescheduleRequest = booking.rescheduleRequest
+
+    // Cannot decline your own request
+    if (rescheduleRequest.requestedBy === userId) {
+      throw new ApiError('You cannot decline your own reschedule request', 403)
+    }
+
+    // Check authorization - must be the OTHER party
+    let isAuthorized = false
+
+    if (userRole === 'admin') {
+      isAuthorized = true
+    } else if (userRole === 'tutor' && booking.tutorId === userId) {
+      isAuthorized = true
+    } else if (userRole === 'student' && booking.studentId === userId) {
+      // Check if student is 18+
+      const studentDoc = await db.collection('users').doc(userId).get()
+      const studentData = studentDoc.data()
+      if (studentData?.dateOfBirth) {
+        const age = calculateAge(studentData.dateOfBirth.toDate())
+        isAuthorized = age >= 18
+      }
+    } else if (userRole === 'parent') {
+      // Check if parent owns the student
+      const studentDoc = await db.collection('users').doc(booking.studentId).get()
+      const student = studentDoc.data()
+      isAuthorized = student?.parentId === userId
+    }
+
+    if (!isAuthorized) {
+      throw new ApiError('Not authorized to decline this reschedule request', 403)
+    }
+
+    // Update reschedule request status to declined
+    await db.collection('bookings').doc(bookingId).update({
+      'rescheduleRequest.status': 'declined',
+      'rescheduleRequest.respondedBy': userId,
+      'rescheduleRequest.respondedAt': FieldValue.serverTimestamp(),
+      'rescheduleRequest.declineReason': reason || 'No reason provided',
+      updatedAt: FieldValue.serverTimestamp()
+    })
+
+    logger.info('Reschedule request declined', {
+      bookingId,
+      declinedBy: userId,
+      reason: reason || 'No reason provided'
+    })
+
+    res.json({ message: 'Reschedule request declined' })
   } catch (error) {
     next(error)
   }

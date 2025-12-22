@@ -27,14 +27,9 @@ export function RescheduleDialog({
 
   const rescheduleMutation = useMutation({
     mutationFn: (data: { newScheduledAt: string }) =>
-      bookingsApi.reschedule(booking.id, data),
+      bookingsApi.requestReschedule(booking.id, data),
     onSuccess: () => {
-      // Show different message based on whether booking was confirmed (has meeting link)
-      const message = booking.status === 'confirmed'
-        ? 'Lesson rescheduled! A new meeting link has been generated.'
-        : 'Lesson rescheduled successfully';
-
-      toast.success(message);
+      toast.success('Reschedule request sent! Awaiting approval from the other party.');
 
       // Invalidate multiple queries that might show this booking
       queryClient.invalidateQueries({ queryKey: ['tutor-bookings'] });
@@ -43,7 +38,7 @@ export function RescheduleDialog({
       handleClose();
     },
     onError: (error: any) => {
-      toast.error(error.message || 'Failed to reschedule lesson');
+      toast.error(error.message || 'Failed to send reschedule request');
     }
   });
 

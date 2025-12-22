@@ -10,6 +10,16 @@ export interface LessonReport {
   completedAt: Timestamp
 }
 
+export interface RescheduleRequest {
+  requestedBy: string        // UID of user who requested
+  requestedAt: Timestamp
+  newScheduledAt: Timestamp  // Proposed new lesson time
+  status: 'pending' | 'approved' | 'declined'
+  respondedBy?: string       // UID of user who approved/declined
+  respondedAt?: Timestamp
+  declineReason?: string
+}
+
 export interface Booking {
   id: string
   studentId: string
@@ -35,7 +45,10 @@ export interface Booking {
   approvedAt?: Timestamp
   tutorNotes?: string  // Notes from tutor when suggesting
 
-  // Reschedule tracking
+  // Reschedule request tracking
+  rescheduleRequest?: RescheduleRequest  // Pending reschedule request
+
+  // Reschedule tracking (for completed reschedules)
   rescheduledBy?: string  // User UID who rescheduled
   rescheduledAt?: Timestamp
 

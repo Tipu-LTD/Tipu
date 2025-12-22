@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Calendar, Clock, User, BookOpen, AlertCircle, CreditCard } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -11,6 +12,9 @@ import { penceToPounds } from '@/utils/currency';
 import { parseFirestoreDate } from '@/utils/date';
 import { RescheduleDialog } from './RescheduleDialog';
 import { CancelDialog } from './CancelDialog';
+import { bookingsApi } from '@/lib/api/bookings';
+import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface BookingCardProps {
   booking: Booking;
@@ -53,6 +57,8 @@ export function BookingCard({
   onAccept,
   onDecline
 }: BookingCardProps) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
 
@@ -62,6 +68,41 @@ export function BookingCard({
   const displayName = tutorName || studentName;
   const displayPhoto = tutorPhoto || studentPhoto;
   const initials = displayName?.split(' ').map(n => n[0]).join('').toUpperCase() || '?';
+
+  // Mutations for approve/decline reschedule
+  const approveRescheduleMutation = useMutation({
+    mutationFn: (bookingId: string) => bookingsApi.approveReschedule(bookingId),
+    onSuccess: () => {
+      toast.success('Reschedule approved! Booking updated.');
+      queryClient.invalidateQueries({ queryKey: ['tutor-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to approve reschedule');
+    }
+  });
+
+  const declineRescheduleMutation = useMutation({
+    mutationFn: (bookingId: string) => bookingsApi.declineReschedule(bookingId),
+    onSuccess: () => {
+      toast.success('Reschedule request declined');
+      queryClient.invalidateQueries({ queryKey: ['tutor-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['booking', booking.id] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to decline reschedule');
+    }
+  });
+
+  const handleApproveReschedule = () => {
+    approveRescheduleMutation.mutate(booking.id);
+  };
+
+  const handleDeclineReschedule = () => {
+    declineRescheduleMutation.mutate(booking.id);
+  };
 
   return (
     <Card>
@@ -128,6 +169,41 @@ export function BookingCard({
               Payment failed: {booking.paymentError}
               <br />
               <span className="font-medium">Please update your payment method</span>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Pending Reschedule Request Alert */}
+        {booking.rescheduleRequest && booking.rescheduleRequest.status === 'pending' && (
+          <Alert className="mt-2">
+            <Calendar className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              <strong>Reschedule Request:</strong>
+              <br />
+              New time proposed: {format(parseFirestoreDate(booking.rescheduleRequest.newScheduledAt), 'PPP p')}
+              {booking.rescheduleRequest.requestedBy !== user?.uid ? (
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    size="sm"
+                    onClick={handleApproveReschedule}
+                    disabled={approveRescheduleMutation.isPending}
+                  >
+                    {approveRescheduleMutation.isPending ? 'Approving...' : 'Approve'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDeclineReschedule}
+                    disabled={declineRescheduleMutation.isPending}
+                  >
+                    {declineRescheduleMutation.isPending ? 'Declining...' : 'Decline'}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-muted-foreground mt-1">
+                  Awaiting approval from the other party
+                </p>
+              )}
             </AlertDescription>
           </Alert>
         )}

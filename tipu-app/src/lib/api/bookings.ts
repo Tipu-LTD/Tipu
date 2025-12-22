@@ -94,10 +94,21 @@ export const bookingsApi = {
       method: 'POST'
     }),
 
-  reschedule: (id: string, data: RescheduleBookingData) =>
-    apiRequest<{ message: string }>(`/v1/bookings/${id}/reschedule`, {
+  requestReschedule: (id: string, data: RescheduleBookingData) =>
+    apiRequest<{ message: string }>(`/v1/bookings/${id}/request-reschedule`, {
       method: 'POST',
       body: JSON.stringify(data)
+    }),
+
+  approveReschedule: (id: string) =>
+    apiRequest<{ message: string; newScheduledAt: Date }>(`/v1/bookings/${id}/approve-reschedule`, {
+      method: 'POST'
+    }),
+
+  declineReschedule: (id: string, reason?: string) =>
+    apiRequest<{ message: string }>(`/v1/bookings/${id}/decline-reschedule`, {
+      method: 'POST',
+      body: JSON.stringify({ reason })
     }),
 
   cancel: (id: string, data: CancelBookingData) =>
