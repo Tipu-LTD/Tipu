@@ -15,9 +15,11 @@ import { usersApi } from '@/lib/api/users';
 import { parseFirestoreDate } from '@/utils/date';
 import { Booking, BookingStatus } from '@/types/booking';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Calendar, CreditCard } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 
 export default function StudentBookings() {
   const navigate = useNavigate();
@@ -247,11 +249,32 @@ export default function StudentBookings() {
                 return (
                   <div key={booking.id}>
                     {booking.status === 'accepted' && (
-                      <PaymentPrompt
-                        booking={booking}
-                        onPayNow={() => handlePayNow(booking)}
-                        isLoading={isCreatingPayment && paymentBooking?.id === booking.id}
-                      />
+                      (() => {
+                        // Check if payment is actually due
+                        const now = new Date();
+                        const paymentDue = !booking.paymentScheduledFor ||
+                                           parseFirestoreDate(booking.paymentScheduledFor) <= now;
+
+                        return paymentDue ? (
+                          <PaymentPrompt
+                            booking={booking}
+                            onPayNow={() => handlePayNow(booking)}
+                            isLoading={isCreatingPayment && paymentBooking?.id === booking.id}
+                          />
+                        ) : (
+                          <Alert className="bg-blue-50 border-blue-200 mb-4">
+                            <CreditCard className="h-5 w-5 text-blue-600" />
+                            <AlertDescription className="ml-2">
+                              <p className="font-semibold text-blue-900">Tutor Accepted - Payment Scheduled</p>
+                              <p className="text-sm text-blue-700">
+                                Payment will be automatically taken on{' '}
+                                <strong>{format(parseFirestoreDate(booking.paymentScheduledFor), 'PPP p')}</strong>
+                                {' '}(24 hours before your lesson)
+                              </p>
+                            </AlertDescription>
+                          </Alert>
+                        );
+                      })()
                     )}
                     <BookingCard
                       booking={booking}

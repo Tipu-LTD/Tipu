@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { penceToPounds } from '@/utils/currency';
+import { parseFirestoreDate } from '@/utils/date';
 import { CheckCircle2, CreditCard } from 'lucide-react';
 import { Booking } from '@/types/booking';
 
@@ -11,6 +12,16 @@ interface PaymentPromptProps {
 }
 
 export function PaymentPrompt({ booking, onPayNow, isLoading }: PaymentPromptProps) {
+  // Safety check: ensure payment is actually due
+  if (booking.paymentScheduledFor) {
+    const now = new Date();
+    const scheduledTime = parseFirestoreDate(booking.paymentScheduledFor);
+    if (scheduledTime > now) {
+      // Payment not yet due - shouldn't render this component
+      return null;
+    }
+  }
+
   return (
     <Alert className="bg-yellow-50 border-yellow-200 mb-4">
       <CheckCircle2 className="h-5 w-5 text-yellow-600" />
