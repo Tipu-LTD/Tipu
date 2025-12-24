@@ -41,9 +41,10 @@ export interface Booking {
   // Tutor-initiated booking fields
   initiatedBy?: 'student' | 'parent' | 'tutor'
   suggestedAt?: Timestamp
-  approvedBy?: string  // Parent UID who approved
+  approvedBy?: string  // Parent UID who approved (or student UID for adult students)
   approvedAt?: Timestamp
   tutorNotes?: string  // Notes from tutor when suggesting
+  requiresParentApproval?: boolean  // True if student <18, false if student ≥18
 
   // Reschedule request tracking
   rescheduleRequest?: RescheduleRequest  // Pending reschedule request

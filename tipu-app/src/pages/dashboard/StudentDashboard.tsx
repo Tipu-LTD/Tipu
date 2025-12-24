@@ -4,15 +4,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { bookingsApi } from '@/lib/api/bookings';
-import { BookOpen, Clock, Users, AlertCircle, CheckCircle } from 'lucide-react';
+import { BookOpen, Clock, Users, AlertCircle, CheckCircle, Lightbulb } from 'lucide-react';
+import { toast } from 'sonner';
 
 const StudentDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: bookingsData, isLoading } = useQuery({
     queryKey: ['student-bookings'],
@@ -20,6 +23,13 @@ const StudentDashboard = () => {
   });
 
   const bookings = bookingsData?.bookings || [];
+
+  // Filter tutor-suggested bookings for adult students (don't require parent approval)
+  const tutorSuggestedBookings = bookings.filter(b =>
+    b.status === 'tutor-suggested' &&
+    b.requiresParentApproval === false
+  );
+
   const pendingBookings = bookings.filter(b =>
     b.status === 'pending' &&
     new Date(b.scheduledAt) >= new Date()
@@ -31,6 +41,30 @@ const StudentDashboard = () => {
   const completedBookings = bookings.filter(b => b.status === 'completed');
   const totalHours = completedBookings.reduce((sum, b) => sum + b.duration, 0);
   const uniqueTutors = new Set(bookings.map(b => b.tutorId)).size;
+
+  // Mutations for tutor suggestion approval
+  const approveSuggestionMutation = useMutation({
+    mutationFn: (id: string) => bookingsApi.approveSuggestion(id),
+    onSuccess: () => {
+      toast.success('Lesson approved! Proceed to payment.');
+      queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to approve lesson');
+    }
+  });
+
+  const declineSuggestionMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      bookingsApi.declineSuggestion(id, reason),
+    onSuccess: () => {
+      toast.success('Lesson suggestion declined. Coordinate with your tutor via WhatsApp if needed.');
+      queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to decline lesson');
+    }
+  });
 
   const stats = [
     { title: 'Pending Approval', value: pendingBookings.length.toString(), description: 'Awaiting tutor response', icon: AlertCircle },
@@ -73,6 +107,62 @@ const StudentDashboard = () => {
           <Button variant="outline" onClick={() => navigate('/bookings')}>View Schedule</Button>
           <Button variant="outline" onClick={() => navigate('/resources')}>Browse Resources</Button>
         </div>
+
+        {/* Tutor Suggestions Section - Adult Students Only */}
+        {tutorSuggestedBookings.length > 0 && (
+          <Alert className="border-blue-200 bg-blue-50">
+            <Lightbulb className="h-4 w-4" />
+            <AlertTitle>Lesson Suggestions from Your Tutor</AlertTitle>
+            <AlertDescription>
+              Your tutor has suggested the following lessons. Review and approve to schedule.
+            </AlertDescription>
+            <div className="mt-4 space-y-4">
+              {tutorSuggestedBookings.map(booking => (
+                <div key={booking.id} className="flex justify-between items-center p-4 border border-blue-200 rounded-lg bg-white">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{booking.subject} - {booking.level}</p>
+                      <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
+                        Suggested
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {format(new Date(booking.scheduledAt), 'PPP p')}
+                    </p>
+                    {booking.tutorNotes && (
+                      <p className="text-sm text-blue-700 mt-1">Note: {booking.tutorNotes}</p>
+                    )}
+                    <p className="text-sm font-semibold mt-1">
+                      £{(booking.price / 100).toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const reason = prompt('Please provide a reason for declining (optional):');
+                        if (reason !== null) {
+                          declineSuggestionMutation.mutate({ id: booking.id, reason: reason || 'No reason provided' });
+                        }
+                      }}
+                      disabled={declineSuggestionMutation.isPending}
+                    >
+                      Decline
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => approveSuggestionMutation.mutate(booking.id)}
+                      disabled={approveSuggestionMutation.isPending}
+                    >
+                      Approve
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Alert>
+        )}
 
         {/* Pending Lessons Section */}
         {pendingBookings.length > 0 && (

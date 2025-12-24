@@ -67,6 +67,16 @@ export function BookingCard({
   // Check if lesson is in the past
   const isPastLesson = parseFirestoreDate(booking.scheduledAt) < new Date();
 
+  // Calculate hours until lesson
+  const scheduledAt = parseFirestoreDate(booking.scheduledAt);
+  const hoursUntilLesson = (scheduledAt.getTime() - Date.now()) / (1000 * 60 * 60);
+
+  // Check if current user is a tutor
+  const isTutor = user?.role === 'tutor';
+
+  // Tutors cannot reschedule <24h before lesson
+  const canTutorReschedule = !isTutor || hoursUntilLesson >= 24;
+
   const displayName = tutorName || studentName;
   const displayPhoto = tutorPhoto || studentPhoto;
   const initials = displayName?.split(' ').map(n => n[0]).join('').toUpperCase() || '?';
@@ -240,6 +250,12 @@ export function BookingCard({
                 variant="outline"
                 size="sm"
                 className="flex-1"
+                disabled={!canTutorReschedule}
+                title={
+                  !canTutorReschedule
+                    ? `Tutors cannot reschedule within 24 hours of lesson (${hoursUntilLesson.toFixed(1)}h remaining)`
+                    : undefined
+                }
               >
                 Reschedule
               </Button>

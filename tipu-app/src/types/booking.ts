@@ -47,6 +47,7 @@ export interface Booking {
   suggestedAt?: any;  // Firestore Timestamp
   approvedBy?: string;
   approvedAt?: any;  // Firestore Timestamp
+  requiresParentApproval?: boolean;  // True if student <18, false if student ≥18
 
   createdAt: Date;
   updatedAt: Date;

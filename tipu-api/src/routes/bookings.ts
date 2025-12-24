@@ -147,12 +147,9 @@ router.post('/:id/decline', authenticate, async (req: AuthRequest, res, next) =>
 
 router.post('/:id/approve-suggestion', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const parentId = req.user!.uid
+    const userId = req.user!.uid
+    const userRole = req.user!.role
     const bookingId = req.params.id
-
-    if (req.user!.role !== 'parent') {
-      throw new ApiError('Only parents can approve lesson suggestions', 403)
-    }
 
     const bookingDoc = await db.collection('bookings').doc(bookingId).get()
 
@@ -162,16 +159,35 @@ router.post('/:id/approve-suggestion', authenticate, async (req: AuthRequest, re
 
     const booking = bookingDoc.data()
 
-    // Verify parent owns the student
-    const studentDoc = await db.collection('users').doc(booking?.studentId).get()
-    const student = studentDoc.data()
-
-    if (student?.parentId !== parentId) {
-      throw new ApiError('Not authorized to approve this booking', 403)
-    }
-
     if (booking?.status !== 'tutor-suggested') {
       throw new ApiError('Booking is not awaiting approval', 400)
+    }
+
+    // Check who needs to approve based on requiresParentApproval field
+    if (booking.requiresParentApproval) {
+      // Student under 18 - parent must approve
+      if (userRole !== 'parent' && userRole !== 'admin') {
+        throw new ApiError('Only parents can approve lesson suggestions for students under 18', 403)
+      }
+
+      if (userRole === 'parent') {
+        // Verify parent owns the student
+        const studentDoc = await db.collection('users').doc(booking?.studentId).get()
+        const student = studentDoc.data()
+
+        if (student?.parentId !== userId) {
+          throw new ApiError('Not authorized to approve this booking', 403)
+        }
+      }
+    } else {
+      // Student 18+ - student must approve themselves
+      if (userRole !== 'student' && userRole !== 'admin') {
+        throw new ApiError('Only the student can approve this lesson suggestion', 403)
+      }
+
+      if (userRole === 'student' && userId !== booking?.studentId) {
+        throw new ApiError('Not authorized to approve this booking', 403)
+      }
     }
 
     // Calculate hours until lesson
@@ -189,7 +205,7 @@ router.post('/:id/approve-suggestion', authenticate, async (req: AuthRequest, re
     // Update to pending (awaiting payment) with payment schedule
     await db.collection('bookings').doc(bookingId).update({
       status: 'pending',
-      approvedBy: parentId,
+      approvedBy: userId,
       approvedAt: FieldValue.serverTimestamp(),
       paymentScheduledFor: paymentScheduledFor,  // Schedule deferred payment
       paymentAttempted: false,                   // Reset payment tracking
@@ -198,9 +214,11 @@ router.post('/:id/approve-suggestion', authenticate, async (req: AuthRequest, re
       updatedAt: FieldValue.serverTimestamp(),
     })
 
-    logger.info('Parent approved tutor suggestion, payment scheduled', {
+    logger.info('Tutor suggestion approved, payment scheduled', {
       bookingId,
-      parentId,
+      approvedBy: userId,
+      approverRole: userRole,
+      requiresParentApproval: booking.requiresParentApproval,
       scheduledAt: scheduledDate.toISOString(),
       paymentScheduledFor: paymentScheduledFor?.toISOString() || 'immediate',
       hoursUntilLesson: hoursUntilLesson.toFixed(1)
@@ -502,6 +520,22 @@ router.post('/:id/request-reschedule', authenticate, async (req: AuthRequest, re
 
     if (!isAuthorized) {
       throw new ApiError('Not authorized to reschedule this booking', 403)
+    }
+
+    // Calculate hours until lesson
+    const scheduledDate = booking?.scheduledAt?.toDate
+      ? booking.scheduledAt.toDate()
+      : new Date(booking?.scheduledAt)
+    const now = new Date()
+    const hoursUntilLesson = (scheduledDate.getTime() - now.getTime()) / (1000 * 60 * 60)
+
+    // Tutors cannot reschedule within 24 hours
+    if (userRole === 'tutor' && hoursUntilLesson < 24 && hoursUntilLesson > 0) {
+      throw new ApiError(
+        `Cannot reschedule within 24 hours of lesson. Only ${hoursUntilLesson.toFixed(1)} hours remaining. ` +
+        `If you cannot make this lesson, please cancel it or contact the student/parent directly via WhatsApp.`,
+        403
+      )
     }
 
     // Can't reschedule completed, cancelled, or declined bookings
@@ -851,6 +885,37 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
         })
         throw new ApiError('Failed to process refund. Please contact support.', 500)
       }
+    }
+
+    // If tutor cancelled, log prominently for admin review
+    if (userRole === 'tutor') {
+      const tutorDoc = await db.collection('users').doc(booking?.tutorId).get()
+      const studentDoc = await db.collection('users').doc(booking?.studentId).get()
+
+      const tutorName = tutorDoc.data()?.displayName || 'Unknown Tutor'
+      const studentName = studentDoc.data()?.displayName || 'Unknown Student'
+
+      logger.warn('⚠️ TUTOR CANCELLATION - ADMIN ACTION REQUIRED ⚠️', {
+        bookingId,
+        tutorId: booking?.tutorId,
+        tutorName: tutorName,
+        tutorEmail: req.user!.email,
+        studentId: booking?.studentId,
+        studentName: studentName,
+        subject: booking?.subject,
+        level: booking?.level,
+        scheduledAt: scheduledAt.toISOString(),
+        hoursUntilLesson: hoursUntilLesson.toFixed(1),
+        reason: reason || 'No reason provided',
+        refundProcessed: !!refundId,
+        timestamp: new Date().toISOString()
+      })
+
+      // TODO: When SendGrid integrated, send email to admins
+      // await emailService.sendTutorCancellationAlert({
+      //   tutorName, studentName, subject: booking.subject, level: booking.level,
+      //   scheduledAt, reason, bookingId
+      // });
     }
 
     // Update booking

@@ -179,8 +179,22 @@ router.post('/suggest-lesson', authenticate, async (req: AuthRequest, res, next)
 
     const student = studentDoc.data()
 
-    if (!student?.parentId) {
-      throw new ApiError('Student must have a parent to approve booking', 400)
+    // Calculate student age to determine if parent approval required
+    let studentAge = 0
+    let requiresParentApproval = false
+
+    if (student?.dateOfBirth) {
+      const birthDate = student.dateOfBirth.toDate ? student.dateOfBirth.toDate() : new Date(student.dateOfBirth)
+      const ageInMs = Date.now() - birthDate.getTime()
+      studentAge = ageInMs / (1000 * 60 * 60 * 24 * 365.25)
+    }
+
+    // Students under 18 require parent approval
+    if (studentAge < 18) {
+      requiresParentApproval = true
+      if (!student?.parentId) {
+        throw new ApiError('Student under 18 must have a parent to approve booking', 400)
+      }
     }
 
     // Calculate price based on tutor's rates
@@ -201,6 +215,7 @@ router.post('/suggest-lesson', authenticate, async (req: AuthRequest, res, next)
       initiatedBy: 'tutor',
       suggestedAt: FieldValue.serverTimestamp(),
       tutorNotes: validatedInput.notes,
+      requiresParentApproval,
       isPaid: false,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -208,7 +223,9 @@ router.post('/suggest-lesson', authenticate, async (req: AuthRequest, res, next)
 
     res.status(201).json({
       id: bookingRef.id,
-      message: 'Lesson suggestion sent to parent for approval',
+      message: requiresParentApproval
+        ? 'Lesson suggestion sent to parent for approval'
+        : 'Lesson suggestion sent to student for approval',
     })
   } catch (error) {
     if (error instanceof z.ZodError) {
