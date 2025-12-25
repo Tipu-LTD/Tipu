@@ -863,27 +863,55 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
       throw new ApiError('Booking is already cancelled', 400)
     }
 
-    // Process refund if paid
+    // Handle payment cancellation/refund
     let refundId = null
-    if (booking?.isPaid && booking?.paymentIntentId) {
+    if (booking?.paymentIntentId) {
       try {
-        const refund = await stripe.refunds.create({
-          payment_intent: booking.paymentIntentId,
-          reason: 'requested_by_customer',
-        })
-        refundId = refund.id
+        // Check if payment was captured (charged) or just authorized (held)
+        if (!booking?.paymentCapturedAt) {
+          // Authorization exists but not captured → Cancel authorization (no charge, no fees)
+          logger.info('🔓 [CANCEL] Releasing authorization (no charge)', {
+            bookingId,
+            paymentIntentId: booking.paymentIntentId,
+          })
 
-        logger.info('Refund processed for cancelled booking', {
-          bookingId,
-          paymentIntentId: booking.paymentIntentId,
-          refundId,
-        })
+          await stripe.paymentIntents.cancel(booking.paymentIntentId)
+
+          logger.info('✅ [CANCEL] Authorization released successfully - no charge to customer', {
+            bookingId,
+            paymentIntentId: booking.paymentIntentId,
+          })
+        } else {
+          // Payment already captured → Process refund (standard Stripe fees apply)
+          logger.info('💸 [CANCEL] Payment was captured, processing refund', {
+            bookingId,
+            paymentIntentId: booking.paymentIntentId,
+          })
+
+          const refund = await stripe.refunds.create({
+            payment_intent: booking.paymentIntentId,
+            reason: 'requested_by_customer',
+            metadata: {
+              bookingId,
+              cancelledBy: userId,
+            },
+          })
+          refundId = refund.id
+
+          logger.info('✅ [CANCEL] Refund processed (Stripe fees: 40p total)', {
+            bookingId,
+            paymentIntentId: booking.paymentIntentId,
+            refundId,
+            amount: refund.amount,
+          })
+        }
       } catch (error: any) {
-        logger.error('Failed to process refund for booking', {
+        logger.error('❌ [CANCEL] Failed to cancel payment/authorization', {
           bookingId,
           error: error.message,
+          paymentIntentId: booking.paymentIntentId,
         })
-        throw new ApiError('Failed to process refund. Please contact support.', 500)
+        throw new ApiError('Failed to process payment cancellation. Please contact support.', 500)
       }
     }
 
@@ -919,14 +947,21 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
     }
 
     // Update booking
-    await db.collection('bookings').doc(bookingId).update({
+    const updateData: any = {
       status: 'cancelled',
       cancelledBy: userId,
       cancelledAt: FieldValue.serverTimestamp(),
       cancellationReason: reason || 'No reason provided',
-      refundId,
       updatedAt: FieldValue.serverTimestamp(),
-    })
+    }
+
+    // Add refund tracking if refund was processed
+    if (refundId) {
+      updateData.refundId = refundId
+      updateData.refundedAt = FieldValue.serverTimestamp()
+    }
+
+    await db.collection('bookings').doc(bookingId).update(updateData)
 
     res.json({
       message: 'Booking cancelled successfully',

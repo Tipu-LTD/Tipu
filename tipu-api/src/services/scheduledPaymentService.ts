@@ -6,53 +6,52 @@ import * as paymentService from './paymentService'
 import * as notificationService from './notificationService'
 
 /**
- * Process scheduled payments for bookings due in the next 24 hours
+ * Process scheduled payments - handles both auth creation and capture
  * Called by cron job every 15 minutes
  */
 export const processScheduledPayments = async (): Promise<{
-  processed: number
+  authsCreated: number
+  captured: number
   successful: number
   failed: number
   errors: Array<{ bookingId: string; error: string }>
 }> => {
   const now = new Date()
+  const sevenDaysFromNow = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000))
+
   const stats = {
-    processed: 0,
+    authsCreated: 0,
+    captured: 0,
     successful: 0,
     failed: 0,
     errors: [] as Array<{ bookingId: string; error: string }>,
   }
 
-  logger.info('🕐 [SCHEDULED PAYMENT] Starting scheduled payment processing', {
+  logger.info('🕐 [SCHEDULED PAYMENT] Starting processing', {
     timestamp: now.toISOString(),
   })
 
   try {
-    // Query bookings where:
-    // 1. Payment scheduled time has passed (paymentScheduledFor <= now)
-    // 2. Payment not yet attempted (paymentAttempted = false)
-    // 3. Status is 'accepted' (tutor accepted, awaiting payment)
-    // 4. Not already paid (isPaid = false)
-    const snapshot = await db
+    // STEP 1: Create authorizations for bookings ≥7 days away (now at 7-day mark)
+    const authBookings = await db
       .collection('bookings')
       .where('status', '==', 'accepted')
-      .where('isPaid', '==', false)
-      .where('paymentScheduledFor', '<=', now)
-      .where('paymentAttempted', '==', false)
-      .limit(50)  // Process max 50 per run to avoid timeouts
+      .where('paymentAuthType', '==', 'deferred_auth')
+      .where('requiresAuthCreation', '==', true)
+      .where('scheduledAt', '<=', sevenDaysFromNow)
+      .where('scheduledAt', '>', now)
+      .limit(20)
       .get()
 
-    logger.info(`📋 [SCHEDULED PAYMENT] Found ${snapshot.size} bookings to process`)
+    logger.info(`📋 [SCHEDULED PAYMENT] Found ${authBookings.size} bookings needing authorization`)
 
-    // Process each booking
-    for (const doc of snapshot.docs) {
+    for (const doc of authBookings.docs) {
       const booking = doc.data()
       const bookingId = doc.id
 
-      stats.processed++
-
       try {
-        await processBookingPayment(bookingId, booking)
+        await createDeferredAuthorization(bookingId, booking)
+        stats.authsCreated++
         stats.successful++
       } catch (error: any) {
         stats.failed++
@@ -60,23 +59,60 @@ export const processScheduledPayments = async (): Promise<{
           bookingId,
           error: error.message,
         })
-
-        logger.error('❌ [SCHEDULED PAYMENT] Failed to process booking payment', {
+        logger.error('❌ [SCHEDULED PAYMENT] Failed to create authorization', {
           bookingId,
           error: error.message,
-          stack: error.stack,
         })
       }
     }
 
-    logger.info('✅ [SCHEDULED PAYMENT] Completed scheduled payment processing', {
+    // STEP 2: Capture authorizations for bookings at 24h mark
+    const captureBookings = await db
+      .collection('bookings')
+      .where('status', '==', 'accepted')
+      .where('isPaid', '==', false)
+      .where('paymentScheduledFor', '<=', now)
+      .where('paymentAttempted', '==', false)
+      .limit(20)
+      .get()
+
+    logger.info(`💳 [SCHEDULED PAYMENT] Found ${captureBookings.size} authorizations to capture`)
+
+    for (const doc of captureBookings.docs) {
+      const booking = doc.data()
+      const bookingId = doc.id
+
+      try {
+        // Check if this is immediate charge flow (no authorization needed)
+        if (booking.paymentAuthType === 'immediate_charge') {
+          await processImmediateCharge(bookingId, booking)
+        } else {
+          // Capture existing authorization
+          await captureAuthorization(bookingId, booking)
+        }
+        stats.captured++
+        stats.successful++
+      } catch (error: any) {
+        stats.failed++
+        stats.errors.push({
+          bookingId,
+          error: error.message,
+        })
+        logger.error('❌ [SCHEDULED PAYMENT] Failed to capture payment', {
+          bookingId,
+          error: error.message,
+        })
+      }
+    }
+
+    logger.info('✅ [SCHEDULED PAYMENT] Completed processing', {
       ...stats,
       timestamp: new Date().toISOString(),
     })
 
     return stats
   } catch (error: any) {
-    logger.error('💥 [SCHEDULED PAYMENT] Fatal error in processScheduledPayments', {
+    logger.error('💥 [SCHEDULED PAYMENT] Fatal error', {
       error: error.message,
       stack: error.stack,
     })
@@ -85,16 +121,145 @@ export const processScheduledPayments = async (): Promise<{
 }
 
 /**
- * Process payment for a single booking
+ * Create authorization for deferred auth bookings (7 days before lesson)
  */
-async function processBookingPayment(bookingId: string, booking: any): Promise<void> {
+async function createDeferredAuthorization(bookingId: string, booking: any): Promise<void> {
   const bookingRef = db.collection('bookings').doc(bookingId)
 
-  logger.info('💳 [SCHEDULED PAYMENT] Processing payment for booking', {
+  logger.info('🔐 [AUTH CREATE] Creating deferred authorization', {
+    bookingId,
+    savedPaymentMethodId: booking.savedPaymentMethodId,
+  })
+
+  if (!booking.savedPaymentMethodId) {
+    throw new Error('No saved payment method for deferred authorization')
+  }
+
+  // Get payer
+  let payerId = booking.studentId
+  const studentDoc = await db.collection('users').doc(booking.studentId).get()
+  if (studentDoc.data()?.parentId) {
+    payerId = studentDoc.data()!.parentId
+  }
+
+  const payerDoc = await db.collection('users').doc(payerId).get()
+  const payer = payerDoc.data()
+
+  if (!payer?.stripeCustomerId) {
+    throw new Error('No Stripe customer ID for payer')
+  }
+
+  // Create Payment Intent with manual capture
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: booking.price,
+    currency: 'gbp',
+    customer: payer.stripeCustomerId,
+    payment_method: booking.savedPaymentMethodId,
+    capture_method: 'manual',
+    off_session: true,
+    confirm: true, // Confirm immediately to create authorization
+    metadata: {
+      bookingId,
+      studentId: booking.studentId,
+      tutorId: booking.tutorId,
+      authorizationType: 'deferred_auth',
+    },
+  })
+
+  const expiresAt = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000))
+
+  // Update booking
+  await bookingRef.update({
+    paymentIntentId: paymentIntent.id,
+    paymentIntentCreatedAt: FieldValue.serverTimestamp(),
+    authorizationExpiresAt: expiresAt,
+    requiresAuthCreation: false, // Mark as done
+    updatedAt: FieldValue.serverTimestamp(),
+  })
+
+  logger.info('✅ [AUTH CREATE] Authorization created successfully', {
+    bookingId,
+    paymentIntentId: paymentIntent.id,
+    status: paymentIntent.status,
+  })
+}
+
+/**
+ * Capture existing authorization (24h before lesson)
+ */
+async function captureAuthorization(bookingId: string, booking: any): Promise<void> {
+  const bookingRef = db.collection('bookings').doc(bookingId)
+
+  logger.info('💰 [CAPTURE] Capturing payment authorization', {
+    bookingId,
+    paymentIntentId: booking.paymentIntentId,
+  })
+
+  if (!booking.paymentIntentId) {
+    throw new Error('No payment intent ID found for capture')
+  }
+
+  // Mark as attempted to prevent duplicate processing
+  await bookingRef.update({
+    paymentAttempted: true,
+    paymentAttemptedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  })
+
+  try {
+    // Capture the payment
+    const paymentIntent = await stripe.paymentIntents.capture(booking.paymentIntentId)
+
+    logger.info('✅ [CAPTURE] Payment captured successfully', {
+      bookingId,
+      paymentIntentId: paymentIntent.id,
+      status: paymentIntent.status,
+      amount: paymentIntent.amount,
+    })
+
+    // If capture succeeded, confirm booking
+    if (paymentIntent.status === 'succeeded') {
+      await paymentService.confirmPayment(bookingId, paymentIntent.id)
+
+      logger.info('🎉 [CAPTURE] Booking confirmed after payment capture', {
+        bookingId,
+        paymentIntentId: paymentIntent.id,
+      })
+    }
+  } catch (error: any) {
+    // Capture failed
+    const errorMessage = error.message || 'Unknown capture error'
+
+    await bookingRef.update({
+      paymentError: errorMessage,
+      paymentRetryCount: FieldValue.increment(1),
+      lastPaymentRetryAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+
+    logger.error('❌ [CAPTURE] Payment capture failed', {
+      bookingId,
+      error: errorMessage,
+      paymentIntentId: booking.paymentIntentId,
+    })
+
+    // Notify parent
+    await notificationService.sendPaymentFailureNotification(bookingId, errorMessage)
+
+    throw error
+  }
+}
+
+/**
+ * Process immediate charge for bookings <24h away (existing flow)
+ */
+async function processImmediateCharge(bookingId: string, booking: any): Promise<void> {
+  const bookingRef = db.collection('bookings').doc(bookingId)
+
+  logger.info('💳 [IMMEDIATE CHARGE] Processing payment for booking', {
     bookingId,
     studentId: booking.studentId,
     price: booking.price,
-    scheduledAt: booking.scheduledAt?.toDate?.()?.toISOString(),
   })
 
   // Mark as attempted immediately to prevent duplicate processing
@@ -151,7 +316,7 @@ async function processBookingPayment(bookingId: string, booking: any): Promise<v
       },
     })
 
-    logger.info('✅ [SCHEDULED PAYMENT] Payment intent created and confirmed', {
+    logger.info('✅ [IMMEDIATE CHARGE] Payment intent created and confirmed', {
       bookingId,
       paymentIntentId: paymentIntent.id,
       status: paymentIntent.status,
@@ -161,26 +326,24 @@ async function processBookingPayment(bookingId: string, booking: any): Promise<v
     if (paymentIntent.status === 'succeeded') {
       await paymentService.confirmPayment(bookingId, paymentIntent.id)
 
-      logger.info('🎉 [SCHEDULED PAYMENT] Booking confirmed after successful payment', {
+      logger.info('🎉 [IMMEDIATE CHARGE] Booking confirmed after successful payment', {
         bookingId,
         paymentIntentId: paymentIntent.id,
       })
     } else {
       // Payment requires additional action (3D Secure, etc.)
-      // Store payment intent for later confirmation
       await bookingRef.update({
         paymentIntentId: paymentIntent.id,
         paymentError: 'Payment requires additional authentication',
         updatedAt: FieldValue.serverTimestamp(),
       })
 
-      logger.warn('⚠️ [SCHEDULED PAYMENT] Payment requires action', {
+      logger.warn('⚠️ [IMMEDIATE CHARGE] Payment requires action', {
         bookingId,
         paymentIntentId: paymentIntent.id,
         status: paymentIntent.status,
       })
 
-      // Send notification to parent to complete payment
       await notificationService.sendPaymentFailureNotification(
         bookingId,
         'Payment requires additional authentication'
@@ -197,7 +360,7 @@ async function processBookingPayment(bookingId: string, booking: any): Promise<v
       updatedAt: FieldValue.serverTimestamp(),
     })
 
-    logger.error('❌ [SCHEDULED PAYMENT] Payment failed for booking', {
+    logger.error('❌ [IMMEDIATE CHARGE] Payment failed for booking', {
       bookingId,
       error: errorMessage,
       studentId: booking.studentId,
@@ -212,10 +375,9 @@ async function processBookingPayment(bookingId: string, booking: any): Promise<v
         bookingId,
         error: notifError.message,
       })
-      // Don't fail the whole process if notification fails
     }
 
-    throw error  // Re-throw to be caught by caller
+    throw error
   }
 }
 

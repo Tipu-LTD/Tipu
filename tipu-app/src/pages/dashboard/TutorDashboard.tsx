@@ -15,7 +15,7 @@ import { penceToPounds } from '@/utils/currency';
 import { parseFirestoreDate } from '@/utils/date';
 import { isTutorProfileComplete } from '@/utils/profileValidation';
 import { toast } from 'sonner';
-import { Bell, Calendar, DollarSign, Users, AlertCircle, UserCircle } from 'lucide-react';
+import { Bell, Calendar, DollarSign, Users, AlertCircle, UserCircle, CreditCard } from 'lucide-react';
 import AvailabilityEditor from '@/components/tutors/AvailabilityEditor';
 
 const TutorDashboard = () => {
@@ -49,6 +49,10 @@ const TutorDashboard = () => {
   });
 
   const pendingRequests = bookings.filter(b => b.status === 'pending');
+  const acceptedAwaitingPayment = bookings.filter(
+    b => b.status === 'accepted' &&
+    (b.paymentIntentId || b.savedPaymentMethodId) // Has payment authorization
+  );
   const upcomingLessons = bookings.filter(b => b.status === 'confirmed' && parseFirestoreDate(b.scheduledAt) >= new Date());
   const completedLessons = bookings.filter(b => b.status === 'completed');
 
@@ -108,7 +112,7 @@ const TutorDashboard = () => {
       description: `${pendingRequests.length} new, ${pendingReschedules.length} reschedules`,
       icon: Bell
     },
-    { title: 'Upcoming Lessons', value: upcomingLessons.length.toString(), description: 'Confirmed bookings', icon: Calendar },
+    { title: 'Upcoming Lessons', value: (upcomingLessons.length + acceptedAwaitingPayment.length).toString(), description: 'Scheduled lessons to prepare for', icon: Calendar },
     { title: "This Month's Earnings", value: penceToPounds(totalEarnings), description: 'Total earnings', icon: DollarSign },
     { title: 'Total Students', value: uniqueStudents.toString(), description: 'Students taught', icon: Users },
   ];
@@ -303,6 +307,93 @@ const TutorDashboard = () => {
                     onClick={() => navigate('/bookings/requests')}
                   >
                     View All {pendingReschedules.length} Reschedule Requests
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Bookings Awaiting Payment */}
+        {acceptedAwaitingPayment.length > 0 && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-blue-600" />
+                  Bookings Awaiting Payment
+                </CardTitle>
+                <Badge variant="outline" className="ml-auto">
+                  {acceptedAwaitingPayment.length}
+                </Badge>
+              </div>
+              <CardDescription>
+                Accepted lessons with authorized payment (will be captured 24h before)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {acceptedAwaitingPayment.slice(0, 3).map((booking) => {
+                  // Fetch student details
+                  const StudentInfo = ({ studentId }: { studentId: string }) => {
+                    const { data: student } = useQuery({
+                      queryKey: ['user', studentId],
+                      queryFn: () => usersApi.getById(studentId)
+                    });
+
+                    return (
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={student?.photoURL} />
+                          <AvatarFallback>
+                            {student?.displayName?.split(' ').map(n => n[0]).join('') || '?'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">{student?.displayName || 'Loading...'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {booking.subject} • {booking.level}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  };
+
+                  return (
+                    <div key={booking.id} className="flex items-start justify-between p-4 border rounded-lg">
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-blue-500">Payment Authorized</Badge>
+                        </div>
+
+                        <StudentInfo studentId={booking.studentId} />
+
+                        <p className="text-sm text-muted-foreground">
+                          Scheduled: {format(parseFirestoreDate(booking.scheduledAt), 'PPP p')}
+                        </p>
+
+                        {booking.paymentScheduledFor && (
+                          <p className="text-xs text-blue-600">
+                            💳 Payment will be captured on{' '}
+                            {format(parseFirestoreDate(booking.paymentScheduledFor), 'PPP')}
+                          </p>
+                        )}
+                      </div>
+
+                      <Button variant="outline" size="sm" onClick={() => navigate(`/bookings/${booking.id}`)}>
+                        View Details
+                      </Button>
+                    </div>
+                  );
+                })}
+
+                {acceptedAwaitingPayment.length > 3 && (
+                  <Button
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => navigate('/bookings/schedule')}
+                  >
+                    View All {acceptedAwaitingPayment.length} Bookings
                   </Button>
                 )}
               </div>

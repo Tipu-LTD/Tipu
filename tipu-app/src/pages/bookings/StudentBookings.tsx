@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Elements } from '@stripe/react-stripe-js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { BookingCard } from '@/components/bookings/BookingCard';
 import { PaymentPrompt } from '@/components/bookings/PaymentPrompt';
 import { PaymentForm } from '@/components/bookings/PaymentForm';
+import { AuthorizationForm } from '@/components/bookings/AuthorizationForm';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { bookingsApi } from '@/lib/api/bookings';
 import { paymentsApi } from '@/lib/api/payments';
@@ -16,10 +18,11 @@ import { parseFirestoreDate } from '@/utils/date';
 import { Booking, BookingStatus } from '@/types/booking';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Calendar, CreditCard } from 'lucide-react';
+import { Calendar, CreditCard, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { getStripe } from '@/lib/stripe/client';
 
 export default function StudentBookings() {
   const navigate = useNavigate();
@@ -31,6 +34,15 @@ export default function StudentBookings() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentSecret, setPaymentSecret] = useState<string | null>(null);
   const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+
+  // Authorization state
+  const [authBooking, setAuthBooking] = useState<Booking | null>(null);
+  const [authSecret, setAuthSecret] = useState<string | null>(null);
+  const [isDeferred, setIsDeferred] = useState(false);
+  const [stripePromise, setStripePromise] = useState<Promise<any> | null>(null);
+
+  // Track recently paid bookings to prevent modal reopening (race condition fix)
+  const [recentlyPaidBookingIds, setRecentlyPaidBookingIds] = useState<Set<string>>(new Set());
 
   const { data: bookingsData, isLoading } = useQuery({
     queryKey: ['student-bookings'],
@@ -145,6 +157,78 @@ export default function StudentBookings() {
   console.log(`Past (${pastBookings.length}):`, pastBookings.map(b => b.id));
   console.log(`Cancelled (${cancelledBookings.length}):`, cancelledBookings.map(b => b.id));
 
+  // Initialize Stripe
+  useEffect(() => {
+    setStripePromise(getStripe());
+  }, []);
+
+  // Auto-trigger authorization when tutor accepts
+  useEffect(() => {
+    if (!bookings || bookings.length === 0) return;
+
+    bookings.forEach((booking) => {
+      // If tutor just accepted and no payment method saved, open modal
+      if (
+        booking.status === 'accepted' &&
+        !booking.paymentIntentId &&
+        !booking.savedPaymentMethodId &&
+        !authBooking && // Don't open multiple modals
+        !paymentBooking && // Don't open multiple modals
+        !recentlyPaidBookingIds.has(booking.id) // ✅ Don't reopen for recently paid bookings
+      ) {
+        // Route based on payment auth type
+        if (booking.paymentAuthType === 'immediate_charge') {
+          handlePayNow(booking); // Existing payment flow for <24h bookings
+        } else {
+          handleAuthorize(booking); // Authorization flow for immediate_auth or deferred_auth
+        }
+      }
+    });
+  }, [bookings, authBooking, paymentBooking, recentlyPaidBookingIds]);
+
+  const handleAuthorize = async (booking: Booking) => {
+    // Safety check: Only handle immediate_auth and deferred_auth
+    // immediate_charge should use handlePayNow instead
+    if (booking.paymentAuthType === 'immediate_charge') {
+      console.error('handleAuthorize called for immediate_charge - should use handlePayNow');
+      return;
+    }
+
+    const isDeferred = booking.paymentAuthType === 'deferred_auth';
+
+    try {
+      const response = isDeferred
+        ? await paymentsApi.createSetupIntent(booking.id)
+        : await paymentsApi.createAuthorization(booking.id);
+
+      setAuthSecret(response.clientSecret);
+      setAuthBooking(booking);
+      setIsDeferred(isDeferred);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to initialize payment authorization');
+    }
+  };
+
+  const handleAuthComplete = () => {
+    if (authBooking) {
+      // Track this booking as recently authorized (prevent modal reopening)
+      setRecentlyPaidBookingIds(prev => new Set(prev).add(authBooking.id));
+
+      // Remove from tracking after 5 seconds (webhook should be done by then)
+      setTimeout(() => {
+        setRecentlyPaidBookingIds(prev => {
+          const next = new Set(prev);
+          next.delete(authBooking.id);
+          return next;
+        });
+      }, 5000);
+    }
+
+    setAuthBooking(null);
+    setAuthSecret(null);
+    queryClient.invalidateQueries({ queryKey: ['student-bookings'] });
+  };
+
   const handlePayNow = async (booking: Booking) => {
     setIsCreatingPayment(true);
     try {
@@ -172,6 +256,18 @@ export default function StudentBookings() {
       // Confirm booking status after successful payment
       if (paymentBooking) {
         await bookingsApi.confirmPayment(paymentBooking.id);
+
+        // Track this booking as recently paid (prevent modal reopening)
+        setRecentlyPaidBookingIds(prev => new Set(prev).add(paymentBooking.id));
+
+        // Remove from tracking after 5 seconds (webhook should be done by then)
+        setTimeout(() => {
+          setRecentlyPaidBookingIds(prev => {
+            const next = new Set(prev);
+            next.delete(paymentBooking.id);
+            return next;
+          });
+        }, 5000);
       }
 
       toast.success('Payment successful! Booking confirmed.');
@@ -247,34 +343,49 @@ export default function StudentBookings() {
                 const tutor = tutorsData?.[booking.tutorId];
                 const student = studentsData?.[booking.studentId];
                 return (
-                  <div key={booking.id}>
-                    {booking.status === 'accepted' && (
-                      (() => {
-                        // Check if payment is actually due
-                        const now = new Date();
-                        const paymentDue = !booking.paymentScheduledFor ||
-                                           parseFirestoreDate(booking.paymentScheduledFor) <= now;
+                  <div key={booking.id} className="space-y-2">
+                    {/* Authorization states - only show for accepted bookings that aren't paid yet */}
+                    {booking.status === 'accepted' && !booking.isPaid && (
+                      <>
+                        {/* Case 1: Payment authorized - show green success badge */}
+                        {(booking.paymentIntentId || booking.savedPaymentMethodId) && !booking.paymentCapturedAt && (
+                          <>
+                            <Alert className="bg-green-50 border-green-200">
+                              <CheckCircle className="h-5 w-5 text-green-600" />
+                              <AlertDescription className="ml-2">
+                                <p className="font-semibold text-green-900">
+                                  ✓ Payment Saved
+                                </p>
+                                <p className="text-sm text-green-700">
+                                  You'll be charged <strong>£{(booking.price / 100).toFixed(2)}</strong> on{' '}
+                                  {format(parseFirestoreDate(booking.paymentScheduledFor), 'PPP')}
+                                </p>
+                              </AlertDescription>
+                            </Alert>
 
-                        return paymentDue ? (
-                          <PaymentPrompt
-                            booking={booking}
-                            onPayNow={() => handlePayNow(booking)}
-                            isLoading={isCreatingPayment && paymentBooking?.id === booking.id}
-                          />
-                        ) : (
-                          <Alert className="bg-blue-50 border-blue-200 mb-4">
-                            <CreditCard className="h-5 w-5 text-blue-600" />
+                            {/* Prominent cancellation policy badge (user preference) */}
+                            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-100 border border-green-300 rounded-full text-sm font-medium text-green-800">
+                              <span>✓</span>
+                              Free cancellation until {format(parseFirestoreDate(booking.paymentScheduledFor), 'PPP')}
+                            </div>
+                          </>
+                        )}
+
+                        {/* Case 2: Authorization needed - auto-opens modal (handled in useEffect) */}
+                        {!booking.paymentIntentId && !booking.savedPaymentMethodId && (
+                          <Alert className="bg-yellow-50 border-yellow-200">
+                            <CreditCard className="h-5 w-5 text-yellow-600" />
                             <AlertDescription className="ml-2">
-                              <p className="font-semibold text-blue-900">Tutor Accepted - Payment Scheduled</p>
-                              <p className="text-sm text-blue-700">
-                                Payment will be automatically taken on{' '}
-                                <strong>{format(parseFirestoreDate(booking.paymentScheduledFor), 'PPP p')}</strong>
-                                {' '}(24 hours before your lesson)
+                              <p className="font-semibold text-yellow-900">
+                                Payment Information Required
+                              </p>
+                              <p className="text-sm text-yellow-700">
+                                Opening payment authorization...
                               </p>
                             </AlertDescription>
                           </Alert>
-                        );
-                      })()
+                        )}
+                      </>
                     )}
                     <BookingCard
                       booking={booking}
@@ -380,6 +491,41 @@ export default function StudentBookings() {
               onSuccess={handlePaymentSuccess}
               onBack={() => setShowPaymentModal(false)}
             />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Authorization Dialog - can't close until card saved */}
+      {authBooking && authSecret && stripePromise && (
+        <Dialog
+          open={!!authBooking && !!authSecret}
+          onOpenChange={(open) => {
+            // Prevent closing - user must complete or it stays open
+            if (!open) {
+              toast.error('Please save your card to continue');
+            }
+          }}
+        >
+          <DialogContent className="max-w-md" hideCloseButton>
+            <DialogHeader>
+              <DialogTitle>
+                {isDeferred ? 'Save Your Card' : 'Authorize Payment'}
+              </DialogTitle>
+              <DialogDescription>
+                Required to confirm your booking
+              </DialogDescription>
+            </DialogHeader>
+
+            <Elements stripe={stripePromise} options={{ clientSecret: authSecret }}>
+              <AuthorizationForm
+                clientSecret={authSecret}
+                bookingId={authBooking.id}
+                amount={authBooking.price}
+                scheduledAt={parseFirestoreDate(authBooking.scheduledAt)}
+                onSuccess={handleAuthComplete}
+                isDeferred={isDeferred}
+              />
+            </Elements>
           </DialogContent>
         </Dialog>
       )}

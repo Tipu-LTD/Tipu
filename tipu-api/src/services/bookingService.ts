@@ -10,16 +10,31 @@ import { FieldValue } from 'firebase-admin/firestore'
 export const createBooking = async (input: CreateBookingInput): Promise<Booking> => {
   const bookingRef = db.collection('bookings').doc()
 
-  // Calculate payment scheduled time (24 hours before lesson)
+  // Calculate time until lesson
   const scheduledAt = input.scheduledAt
   const now = new Date()
   const hoursUntilLesson = (scheduledAt.getTime() - now.getTime()) / (1000 * 60 * 60)
+  const daysUntilLesson = hoursUntilLesson / 24
 
-  // If booking is less than 24 hours away, payment is immediate (handled in frontend)
-  // Otherwise, payment scheduled for 24 hours before lesson
-  const paymentScheduledFor = hoursUntilLesson < 24
-    ? null  // Immediate payment required
-    : new Date(scheduledAt.getTime() - (24 * 60 * 60 * 1000))
+  // Determine payment authorization type and schedule
+  let paymentAuthType: 'immediate_auth' | 'deferred_auth' | 'immediate_charge'
+  let paymentScheduledFor: Date | null
+  let requiresAuthCreation = false
+
+  if (hoursUntilLesson < 24) {
+    // <24h: Charge immediately after tutor acceptance (existing immediate flow)
+    paymentAuthType = 'immediate_charge'
+    paymentScheduledFor = null
+  } else if (daysUntilLesson < 7) {
+    // <7 days: Authorize immediately at booking time, capture 24h before lesson
+    paymentAuthType = 'immediate_auth'
+    paymentScheduledFor = new Date(scheduledAt.getTime() - (24 * 60 * 60 * 1000))
+  } else {
+    // ≥7 days: Save card now, create authorization 7 days before, capture 24h before
+    paymentAuthType = 'deferred_auth'
+    paymentScheduledFor = new Date(scheduledAt.getTime() - (24 * 60 * 60 * 1000))
+    requiresAuthCreation = true  // Flag for cron job to create auth at 7-day mark
+  }
 
   const booking: Booking = {
     id: bookingRef.id,
@@ -33,8 +48,10 @@ export const createBooking = async (input: CreateBookingInput): Promise<Booking>
     price: input.price,
     isPaid: false,
 
-    // Deferred payment fields
+    // Payment authorization tracking
+    paymentAuthType,
     paymentScheduledFor: paymentScheduledFor ? (FieldValue.serverTimestamp() as any) : null,
+    requiresAuthCreation,
     paymentAttempted: false,
     paymentRetryCount: 0,
 
@@ -46,16 +63,18 @@ export const createBooking = async (input: CreateBookingInput): Promise<Booking>
   await bookingRef.set({
     ...booking,
     scheduledAt: input.scheduledAt,
-    paymentScheduledFor: paymentScheduledFor,
+    paymentScheduledFor,
   })
 
-  logger.info(`Booking created with ${paymentScheduledFor ? 'deferred' : 'immediate'} payment`, {
+  logger.info(`Booking created with ${paymentAuthType} payment flow`, {
     bookingId: bookingRef.id,
     studentId: input.studentId,
     tutorId: input.tutorId,
     scheduledAt: input.scheduledAt.toISOString(),
-    paymentScheduledFor: paymentScheduledFor?.toISOString() || 'immediate',
     hoursUntilLesson: hoursUntilLesson.toFixed(1),
+    daysUntilLesson: daysUntilLesson.toFixed(1),
+    paymentAuthType,
+    paymentScheduledFor: paymentScheduledFor?.toISOString() || 'null',
   })
 
   return {

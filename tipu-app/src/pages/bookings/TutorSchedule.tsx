@@ -54,7 +54,7 @@ const TutorSchedule = () => {
   }, [bookings]);
 
   const upcomingBookings = bookings.filter(
-    b => (b.status === 'confirmed' || b.status === 'pending') && parseFirestoreDate(b.scheduledAt) >= new Date()
+    b => (b.status === 'confirmed' || b.status === 'accepted' || b.status === 'pending') && parseFirestoreDate(b.scheduledAt) >= new Date()
   );
   const pastBookings = bookings.filter(
     b => b.status === 'completed' || (b.status === 'confirmed' && parseFirestoreDate(b.scheduledAt) < new Date())
@@ -89,10 +89,11 @@ const TutorSchedule = () => {
                   <Badge variant="outline">{booking.level}</Badge>
                   <Badge variant={
                     booking.status === 'confirmed' ? 'default' :
+                    booking.status === 'accepted' ? 'secondary' :
                     booking.status === 'pending' ? 'secondary' :
                     booking.status === 'completed' ? 'default' :
                     'destructive'
-                  }>
+                  } className={booking.status === 'accepted' ? 'bg-green-500' : ''}>
                     {booking.status}
                   </Badge>
                 </div>

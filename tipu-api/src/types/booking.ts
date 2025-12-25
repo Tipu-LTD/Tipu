@@ -67,6 +67,19 @@ export interface Booking {
   paymentRetryCount?: number        // Number of retry attempts (max 3)
   lastPaymentRetryAt?: Timestamp    // Last retry timestamp
 
+  // Payment authorization tracking (manual capture flow)
+  paymentAuthType?: 'immediate_auth' | 'deferred_auth' | 'immediate_charge'
+  // immediate_auth: <7 days away, authorize at booking time
+  // deferred_auth: ≥7 days away, save card now, authorize 7 days before
+  // immediate_charge: <24h away, charge immediately (existing flow)
+  paymentIntentCreatedAt?: Timestamp  // When PaymentIntent was created
+  paymentCapturedAt?: Timestamp       // When payment was captured (charged)
+  authorizationExpiresAt?: Timestamp  // 7 days from PI creation (Stripe limit)
+  savedPaymentMethodId?: string       // For deferred auth flow (saved card)
+  setupIntentId?: string              // SetupIntent ID for deferred auth
+  requiresAuthCreation?: boolean      // Flag for cron: needs PI creation 7 days before
+  refundedAt?: Timestamp              // When refund was processed
+
   // Notification tracking
   paymentReminderSent?: boolean     // 48h reminder sent
   paymentDueSoonSent?: boolean      // 24h reminder sent
