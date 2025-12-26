@@ -7,7 +7,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '@/lib/api/users';
 import { useAuth } from '@/contexts/AuthContext';
 import { calculateAge } from '@/utils/age';
-import { signUpWithEmail } from '@/lib/firebase/auth';
 import { authApi } from '@/lib/api/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,14 +70,11 @@ const AddChild = () => {
 
     setIsLoading(true);
     try {
-      // Create Firebase Auth account for child
-      const userCredential = await signUpWithEmail(data.email, data.password);
-      const childUid = userCredential.user.uid;
-
-      // Register child with backend, linking to parent
+      // Create child account via backend (uses Firebase Admin SDK)
+      // This doesn't affect parent's auth session
       await authApi.register({
-        uid: childUid,
         email: data.email,
+        password: data.password, // Send password to backend
         displayName: data.displayName,
         role: 'student',
         dateOfBirth: data.dateOfBirth,

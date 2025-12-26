@@ -28,7 +28,7 @@ export const registerSchema = z.object({
   }),
 
   // Optional fields based on role
-  dateOfBirth: z.string().datetime().optional(), // For students (18+ check)
+  dateOfBirth: z.string().optional(), // For students (18+ check) - accepts any date format
   parentId: z.string().optional(), // For students under 18
   bio: z.string().max(500).optional(), // For tutors
   subjects: z.array(z.string()).optional(), // For tutors
