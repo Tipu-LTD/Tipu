@@ -44,7 +44,7 @@ app.use(
     origin: (origin, callback) => {
       // Require origin header for all requests (security fix)
       if (!origin) {
-        logger.warn('CORS blocked request with no origin header');
+        logger.warn("CORS blocked request with no origin header");
         return callback(new Error("Origin header required"));
       }
 
@@ -62,8 +62,8 @@ app.use(
 // Stripe webhook route with raw body parser (MUST be before global JSON parser)
 // This is required for Stripe webhook signature verification
 app.post(
-  '/api/v1/payments/webhook',
-  express.raw({ type: 'application/json' }),
+  "/api/v1/payments/webhook",
+  express.raw({ type: "application/json" }),
   paymentRoutes
 );
 
@@ -77,23 +77,23 @@ app.use(sanitizeBody);
 // Rate limiting middleware
 // Helper function to check if request is from localhost (bypass rate limiting in development)
 const isLocalhost = (req: express.Request): boolean => {
-  const ip = req.ip || '';
-  return ip === '127.0.0.1' || ip === '::1' || ip.includes('localhost');
+  const ip = req.ip || "";
+  return ip === "127.0.0.1" || ip === "::1" || ip.includes("localhost");
 };
 
 // General API rate limit - 100 requests per 15 minutes
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window per IP
+  max: 10000, // 10000 requests per window per IP (TESTING)
   skip: isLocalhost, // Bypass rate limiting for localhost
-  message: 'Too many requests from this IP, please try again later',
+  message: "Too many requests from this IP, please try again later",
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   handler: (req, res) => {
     logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
     res.status(429).json({
-      error: 'Too many requests',
-      message: 'You have exceeded the rate limit. Please try again later.',
+      error: "Too many requests",
+      message: "You have exceeded the rate limit. Please try again later.",
     });
   },
 });
@@ -101,16 +101,17 @@ const apiLimiter = rateLimit({
 // Strict rate limit for authentication endpoints - 5 attempts per 15 minutes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per window per IP
+  max: 10000, // 10000 attempts per window per IP (TESTING)
   skip: isLocalhost, // Bypass rate limiting for localhost
-  message: 'Too many authentication attempts, please try again later',
+  message: "Too many authentication attempts, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
     logger.warn(`Auth rate limit exceeded for IP: ${req.ip}`);
     res.status(429).json({
-      error: 'Too many authentication attempts',
-      message: 'You have exceeded the authentication rate limit. Please try again in 15 minutes.',
+      error: "Too many authentication attempts",
+      message:
+        "You have exceeded the authentication rate limit. Please try again in 15 minutes.",
     });
   },
 });
@@ -118,16 +119,17 @@ const authLimiter = rateLimit({
 // Strict limiter for payment endpoints - 10 requests per 15 minutes
 const paymentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 requests per window per IP
+  max: 10000, // 10000 requests per window per IP (TESTING)
   skip: isLocalhost, // Bypass rate limiting for localhost
-  message: 'Too many payment requests',
+  message: "Too many payment requests",
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
     logger.warn(`Payment rate limit exceeded for IP: ${req.ip}`);
     res.status(429).json({
-      error: 'Too many payment requests',
-      message: 'You have exceeded the payment rate limit. Please try again later.',
+      error: "Too many payment requests",
+      message:
+        "You have exceeded the payment rate limit. Please try again later.",
     });
   },
 });
@@ -135,31 +137,32 @@ const paymentLimiter = rateLimit({
 // Strict limiter for message endpoints - 30 requests per 15 minutes
 const messageLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 30, // 30 requests per window per IP
+  max: 10000, // 10000 requests per window per IP (TESTING)
   skip: isLocalhost, // Bypass rate limiting for localhost
-  message: 'Too many messages sent',
+  message: "Too many messages sent",
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
     logger.warn(`Message rate limit exceeded for IP: ${req.ip}`);
     res.status(429).json({
-      error: 'Too many messages sent',
-      message: 'You have exceeded the message rate limit. Please try again later.',
+      error: "Too many messages sent",
+      message:
+        "You have exceeded the message rate limit. Please try again later.",
     });
   },
 });
 
 // Apply rate limiting to API routes
-app.use('/api/', apiLimiter);
+app.use("/api/", apiLimiter);
 
 // Apply stricter rate limiting to specific endpoints
 // Note: These must be defined before the main routes to take precedence
-app.use('/api/v1/auth/login', authLimiter);
-app.use('/api/v1/auth/register', authLimiter);
-app.use('/api/v1/auth/password-reset', authLimiter); // 5 attempts per 15min
-app.use('/api/v1/auth/resend-verification', authLimiter); // 5 attempts per 15min
-app.use('/api/v1/payments', paymentLimiter);
-app.use('/api/v1/messages', messageLimiter);
+app.use("/api/v1/auth/login", authLimiter);
+app.use("/api/v1/auth/register", authLimiter);
+app.use("/api/v1/auth/password-reset", authLimiter); // 5 attempts per 15min
+app.use("/api/v1/auth/resend-verification", authLimiter); // 5 attempts per 15min
+app.use("/api/v1/payments", paymentLimiter);
+app.use("/api/v1/messages", messageLimiter);
 
 // Swagger documentation (root path)
 app.use("/", swaggerUi.serve);
@@ -167,7 +170,7 @@ app.get(
   "/",
   swaggerUi.setup(swaggerSpec, {
     customCss: ".swagger-ui .topbar { display: none }",
-    customSiteTitle: "TIPU Academy API Documentation",
+    customSiteTitle: "TIPU API Documentation",
   })
 );
 
