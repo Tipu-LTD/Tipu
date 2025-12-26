@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '@/lib/api/users';
 import { useAuth } from '@/contexts/AuthContext';
 import { calculateAge } from '@/utils/age';
@@ -36,7 +37,8 @@ type AddChildFormData = z.infer<typeof addChildSchema>;
 
 const AddChild = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
+  const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [childAge, setChildAge] = useState<number | null>(null);
 
@@ -85,7 +87,13 @@ const AddChild = () => {
 
       toast.success(`${data.displayName} has been added successfully!`);
 
-      // Redirect to parent dashboard
+      // Invalidate all queries to force refresh
+      queryClient.invalidateQueries();
+
+      // Refresh parent profile to update childrenIds
+      await refreshProfile();
+
+      // Redirect to parent dashboard (will now show fresh data)
       navigate('/dashboard/parent');
     } catch (error: any) {
       console.error('Error adding child:', error);
