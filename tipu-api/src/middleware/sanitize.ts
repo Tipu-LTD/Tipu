@@ -6,7 +6,7 @@ import { logger } from '../config/logger'
  * Middleware to sanitize all request body inputs
  * Prevents XSS attacks by stripping HTML from user input
  */
-export const sanitizeBody = (req: Request, res: Response, next: NextFunction): void => {
+export const sanitizeBody = (req: Request, _res: Response, next: NextFunction): void => {
   if (req.body && Object.keys(req.body).length > 0) {
     try {
       req.body = sanitizeInput(req.body)

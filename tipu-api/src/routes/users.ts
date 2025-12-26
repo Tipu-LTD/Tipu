@@ -1,9 +1,7 @@
 import { Router } from 'express'
 import { authenticate, AuthRequest } from '../middleware/auth'
 import * as userService from '../services/userService'
-import { updateUserSchema, createChildSchema } from '../schemas/user.schema'
-import { auth } from '../config/firebase'
-import { ZodError } from 'zod'
+import { updateUserSchema } from '../schemas/user.schema'
 
 const router = Router()
 

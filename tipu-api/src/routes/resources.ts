@@ -66,7 +66,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response, next: Nex
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Invalid request data', details: error.errors });
     }
-    next(error);
+    return next(error);
   }
 });
 
@@ -132,7 +132,7 @@ router.get('/student/:studentId', authenticate, async (req: AuthRequest, res: Re
     return res.status(200).json(resources);
 
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
@@ -155,6 +155,10 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response, next
 
     const resourceData = resourceDoc.data();
 
+    if (!resourceData) {
+      return res.status(404).json({ error: 'Resource data not found' });
+    }
+
     // Check if user is the uploader or admin
     if (resourceData.uploadedBy !== user.uid && user.role !== 'admin') {
       return res.status(403).json({ error: 'You can only delete resources you uploaded' });
@@ -166,7 +170,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response, next
     return res.status(200).json({ message: 'Resource deleted successfully' });
 
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 

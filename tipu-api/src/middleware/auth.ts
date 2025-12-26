@@ -10,6 +10,7 @@ export interface AuthRequest extends Request {
     role?: UserRole
     emailVerified?: boolean
     isApproved?: boolean
+    childrenIds?: string[]
   }
 }
 

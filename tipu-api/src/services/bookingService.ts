@@ -2,7 +2,7 @@ import { db } from '../config/firebase'
 import { logger } from '../config/logger'
 import { Booking, CreateBookingInput, AcceptBookingInput, DeclineBookingInput, SubmitLessonReportInput } from '../types/booking'
 import { ApiError } from '../middleware/errorHandler'
-import { FieldValue } from 'firebase-admin/firestore'
+import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 
 /**
  * Create a new booking request
@@ -42,7 +42,7 @@ export const createBooking = async (input: CreateBookingInput): Promise<Booking>
     tutorId: input.tutorId,
     subject: input.subject,
     level: input.level,
-    scheduledAt: input.scheduledAt,  // Direct assignment instead of serverTimestamp
+    scheduledAt: Timestamp.fromDate(input.scheduledAt),  // Convert Date to Timestamp
     duration: input.duration || 60,
     status: 'pending',
     price: input.price,
@@ -50,7 +50,7 @@ export const createBooking = async (input: CreateBookingInput): Promise<Booking>
 
     // Payment authorization tracking
     paymentAuthType,
-    paymentScheduledFor: paymentScheduledFor,  // Direct assignment instead of serverTimestamp
+    paymentScheduledFor: paymentScheduledFor ? Timestamp.fromDate(paymentScheduledFor) : undefined,  // Convert Date to Timestamp
     requiresAuthCreation,
     paymentAttempted: false,
     paymentRetryCount: 0,

@@ -8,7 +8,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { ApiError } from '../middleware/errorHandler'
 import { logger } from '../config/logger'
 import { z } from 'zod'
-import { createBookingSchema, lessonReportSchema, acceptBookingSchema, declineBookingSchema, rescheduleBookingSchema } from '../schemas/booking.schema'
+import { createBookingSchema, lessonReportSchema,  declineBookingSchema, rescheduleBookingSchema } from '../schemas/booking.schema'
 import { calculateAge } from '../utils/ageCheck'
 import { stripe } from '../config/stripe'
 
@@ -94,7 +94,7 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
         details: error.errors,
       })
     }
-    next(error)
+    return next(error)
   }
 })
 
@@ -118,7 +118,7 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 
     res.json({ bookings })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -152,7 +152,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
 
     res.json(booking)
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -166,7 +166,7 @@ router.post('/:id/accept', authenticate, async (req: AuthRequest, res, next) => 
 
     res.json({ message: 'Booking accepted successfully' })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -189,7 +189,7 @@ router.post('/:id/decline', authenticate, async (req: AuthRequest, res, next) =>
         details: error.errors,
       })
     }
-    next(error)
+    return next(error)
   }
 })
 
@@ -274,7 +274,7 @@ router.post('/:id/approve-suggestion', authenticate, async (req: AuthRequest, re
 
     res.json({ message: 'Lesson approved, proceed to payment' })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -317,7 +317,7 @@ router.post('/:id/decline-suggestion', authenticate, async (req: AuthRequest, re
 
     res.json({ message: 'Lesson suggestion declined' })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -342,7 +342,7 @@ router.post('/:id/lesson-report', authenticate, async (req: AuthRequest, res, ne
         details: error.errors,
       })
     }
-    next(error)
+    return next(error)
   }
 })
 
@@ -420,7 +420,7 @@ router.patch('/:id/confirm-payment', authenticate, async (req: AuthRequest, res,
         stack: error.stack,
       },
     })
-    next(error)
+    return next(error)
   }
 })
 
@@ -545,7 +545,7 @@ router.post('/:id/generate-meeting', authenticate, async (req: AuthRequest, res,
         stack: error.stack,
       },
     })
-    next(error)
+    return next(error)
   }
 })
 
@@ -654,7 +654,7 @@ router.post('/:id/request-reschedule', authenticate, async (req: AuthRequest, re
       rescheduleRequest
     })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -791,7 +791,7 @@ router.post('/:id/approve-reschedule', authenticate, async (req: AuthRequest, re
       newScheduledAt: newScheduledDate
     })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -876,7 +876,7 @@ router.post('/:id/decline-reschedule', authenticate, async (req: AuthRequest, re
 
     res.json({ message: 'Reschedule request declined' })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -1153,7 +1153,7 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
       paymentCancellationSkipped,
     })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
