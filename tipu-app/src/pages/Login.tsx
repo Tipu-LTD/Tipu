@@ -70,27 +70,10 @@ const Login = () => {
       // Refresh profile to sync auth state
       await refreshProfile();
 
-      // Get user profile to determine role
-      const response = await authApi.getMe();
-
       // Show success message
-      if (response.user.displayName) {
-        toast.success(`Welcome back, ${response.user.displayName}!`);
-      }
+      toast.success('Login successful!');
 
-      // Role-based redirect
-      const dashboardMap: Record<UserRole, string> = {
-        student: '/dashboard/student',
-        tutor: '/dashboard/tutor',
-        parent: '/dashboard/parent',
-        admin: '/dashboard/admin'
-      };
-
-      // Use window.location for hard redirect
-      const targetUrl = dashboardMap[response.user.role];
-      if (targetUrl) {
-        window.location.href = targetUrl;
-      }
+      // Navigation handled by useEffect when user state updates
     } catch (error: any) {
       console.error('Login error:', error);
       const errorMessage = getAuthErrorMessage(error.code || '');
