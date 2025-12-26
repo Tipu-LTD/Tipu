@@ -4,7 +4,8 @@ import { logger } from './logger'
 // Determine environment: use test keys in development or dev branch, live keys in production
 const isDev = process.env.NODE_ENV === 'development'
 const isDevBranch = process.env.BRANCH === 'dev'
-const isTestMode = isDev || isDevBranch
+const forceTestMode = process.env.STRIPE_FORCE_TEST_MODE === 'true'
+const isTestMode = isDev || isDevBranch || forceTestMode
 
 // Select appropriate Stripe secret key based on environment
 const stripeSecretKey = isTestMode
@@ -35,7 +36,7 @@ if (!webhookSecretKey) {
 }
 
 // Log which mode Stripe is running in (without exposing keys)
-logger.info(`💳 Stripe initialized in ${isTestMode ? 'TEST' : 'LIVE'} mode`)
+logger.info(`💳 Stripe initialized in ${isTestMode ? 'TEST' : 'LIVE'} mode${forceTestMode ? ' (forced)' : ''}`)
 
 export const stripe = new Stripe(stripeSecretKey, {
   apiVersion: '2024-11-20.acacia' as any, // Updated from 2023-10-16 to latest stable version
