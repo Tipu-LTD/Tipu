@@ -38,7 +38,7 @@ if (!webhookSecretKey) {
 logger.info(`💳 Stripe initialized in ${isTestMode ? 'TEST' : 'LIVE'} mode`)
 
 export const stripe = new Stripe(stripeSecretKey, {
-  apiVersion: '2024-11-20.acacia', // Updated from 2023-10-16 to latest stable version
+  apiVersion: '2024-11-20.acacia' as any, // Updated from 2023-10-16 to latest stable version
   typescript: true,
 })
 

@@ -2,10 +2,10 @@ import { Router } from 'express'
 import { authenticate, AuthRequest } from '../middleware/auth'
 import * as userService from '../services/userService'
 import { calculateAge } from '../utils/ageCheck'
-import { registerSchema, passwordResetRequestSchema, verifyEmailSchema } from '../schemas/auth.schema'
-import { auth, db } from '../config/firebase'
+import { registerSchema, passwordResetRequestSchema } from '../schemas/auth.schema'
+import { auth } from '../config/firebase'
 import { ZodError } from 'zod'
-import { sendPasswordResetEmail, sendVerificationEmail, sendWelcomeEmail } from '../services/emailService'
+import { sendPasswordResetEmail, sendVerificationEmail } from '../services/emailService'
 import { logger } from '../config/logger'
 
 const router = Router()
@@ -72,8 +72,8 @@ router.post('/register', async (req, res, next) => {
       dateOfBirth: validated.dateOfBirth ? new Date(validated.dateOfBirth) : undefined,
       parentId: validated.parentId,
       bio: validated.bio,
-      subjects: validated.subjects,
-      hourlyRates: validated.hourlyRates,
+      subjects: validated.subjects as import('../types/user').Subject[] | undefined,
+      hourlyRates: validated.hourlyRates as { GCSE: number; 'A-Level': number } | undefined,
     })
 
     // Send email verification link
@@ -89,7 +89,7 @@ router.post('/register', async (req, res, next) => {
       })
     }
 
-    res.status(201).json({
+    return res.status(201).json({
       user,
       message: 'User registered successfully. Please check your email to verify your account.',
     })
@@ -102,7 +102,7 @@ router.post('/register', async (req, res, next) => {
       })
     }
 
-    next(error)
+    return next(error)
   }
 })
 
@@ -112,7 +112,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res, next) => {
 
     res.json({ user })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -160,7 +160,7 @@ router.post('/password-reset', async (req, res, next) => {
     }
 
     // Always return success (don't reveal if email exists)
-    res.json({
+    return res.json({
       message: 'If an account exists with this email, a password reset link has been sent',
     })
   } catch (error) {
@@ -172,7 +172,7 @@ router.post('/password-reset', async (req, res, next) => {
       })
     }
 
-    next(error)
+    return next(error)
   }
 })
 
@@ -204,7 +204,7 @@ router.post('/resend-verification', authenticate, async (req: AuthRequest, res, 
 
     logger.info('Verification email resent', { email: user.email })
 
-    res.json({
+    return res.json({
       message: 'Verification email sent. Please check your inbox.',
     })
   } catch (error: any) {
@@ -212,25 +212,28 @@ router.post('/resend-verification', authenticate, async (req: AuthRequest, res, 
       uid: req.user?.uid,
       error: error.message,
     })
-    next(error)
+    return next(error)
   }
 })
 
 /**
  * Verify email endpoint
- * Verifies the user's email using the oobCode from the verification link
+ * TODO: Implement using Firebase Admin SDK methods instead of client SDK methods
+ * checkActionCode and applyActionCode don't exist in Firebase Admin SDK
  *
- * This endpoint:
- * 1. Validates the verification code with Firebase
- * 2. Updates the user's emailVerified status in Firestore
- * 3. Sends a welcome email
+ * Options:
+ * 1. Handle email verification client-side using Firebase Client SDK
+ * 2. Use Firebase Auth REST API for server-side verification
+ * 3. Skip server-side verification and rely on Firebase's automatic handling
  */
+/*
 router.post('/verify-email', async (req, res, next) => {
   try {
     // Validate input
     const { oobCode } = verifyEmailSchema.parse(req.body)
 
     // Verify the code and apply the email verification
+    // Note: checkActionCode is not available in Firebase Admin SDK
     const info = await auth.checkActionCode(oobCode)
 
     // Extract email from the action code info
@@ -244,6 +247,7 @@ router.post('/verify-email', async (req, res, next) => {
     }
 
     // Apply the verification
+    // Note: applyActionCode is not available in Firebase Admin SDK
     await auth.applyActionCode(oobCode)
 
     // Update Firestore user document
@@ -270,7 +274,7 @@ router.post('/verify-email', async (req, res, next) => {
 
     logger.info('Email verified successfully', { email, uid: userRecord.uid })
 
-    res.json({
+    return res.json({
       message: 'Email verified successfully! Welcome to Tipu.',
     })
   } catch (error: any) {
@@ -298,8 +302,9 @@ router.post('/verify-email', async (req, res, next) => {
     }
 
     logger.error('Error verifying email', { error: error.message })
-    next(error)
+    return next(error)
   }
 })
+*/
 
 export default router

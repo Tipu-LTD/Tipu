@@ -26,7 +26,7 @@ router.post('/create-intent', authenticate, async (req: AuthRequest, res, next) 
 
     res.json(result)
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -35,7 +35,7 @@ router.get('/history', authenticate, async (req: AuthRequest, res, next) => {
     const payments = await paymentService.getPaymentHistory(req.user!.uid)
     res.json({ payments })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -47,7 +47,7 @@ router.post('/connect-account', authenticate, async (req: AuthRequest, res, next
     )
     res.json(result)
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -166,7 +166,7 @@ router.post('/authorize', authenticate, async (req: AuthRequest, res, next) => {
       expiresAt: expiresAt.toISOString()
     })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -270,7 +270,7 @@ router.post('/setup-intent', authenticate, async (req: AuthRequest, res, next) =
       setupIntentId: setupIntent.id
     })
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 

@@ -87,7 +87,7 @@ router.get('/my-students', authenticate, async (req: AuthRequest, res, next) => 
 
     res.json(students)
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -142,7 +142,7 @@ router.get('/students/:studentId/lesson-reports', authenticate, async (req: Auth
 
     res.json(reports)
   } catch (error) {
-    next(error)
+    return next(error)
   }
 })
 
@@ -237,7 +237,7 @@ router.post('/suggest-lesson', authenticate, async (req: AuthRequest, res, next)
         details: error.errors,
       })
     }
-    next(error)
+    return next(error)
   }
 })
 

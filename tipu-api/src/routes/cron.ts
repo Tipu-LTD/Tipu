@@ -22,7 +22,7 @@ function verifyCronSecret(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
-  next()
+  return next()
 }
 
 /**
@@ -64,7 +64,7 @@ router.post('/process-payments', verifyCronSecret, async (req: Request, res: Res
  * POST /api/v1/cron/retry-failed-payments
  * Retry failed payments (called less frequently, e.g., hourly)
  */
-router.post('/retry-failed-payments', verifyCronSecret, async (req: Request, res: Response) => {
+router.post('/retry-failed-payments', verifyCronSecret, async (_req: Request, res: Response) => {
   logger.info('📨 [CRON] Received retry-failed-payments request')
 
   try {
