@@ -80,9 +80,10 @@ export const bookingsApi = {
       body: JSON.stringify(data)
     }),
 
-  confirmPayment: (id: string) =>
+  confirmPayment: (id: string, paymentIntentId: string) =>
     apiRequest<{ message: string }>(`/v1/bookings/${id}/confirm-payment`, {
-      method: 'PATCH'
+      method: 'PATCH',
+      body: JSON.stringify({ paymentIntentId })
     }),
 
   /**
@@ -135,4 +136,10 @@ export const bookingsApi = {
       method: 'POST',
       body: JSON.stringify({ reason })
     })
+};
+
+// Convenience helper functions for easier imports
+export const getBookings = async (params?: { status?: string; limit?: number; offset?: number }) => {
+  const response = await bookingsApi.getAll(params);
+  return response.bookings;
 };

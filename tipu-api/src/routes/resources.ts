@@ -73,12 +73,14 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response, next: Nex
 /**
  * GET /api/v1/resources/student/:studentId
  * Get all resources for a specific student
+ * Query params: subject (optional) - filter by subject
  * Auth: Tutor who uploaded OR student OR student's parent
  */
 router.get('/student/:studentId', authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const user = req.user!;
     const { studentId } = req.params;
+    const { subject } = req.query;
 
     // Check authorization
     let isAuthorized = false;
@@ -111,11 +113,16 @@ router.get('/student/:studentId', authenticate, async (req: AuthRequest, res: Re
       return res.status(403).json({ error: 'You do not have access to this student\'s resources' });
     }
 
-    // Fetch resources for the student
-    const resourcesSnapshot = await db.collection('resources')
-      .where('studentId', '==', studentId)
-      .orderBy('createdAt', 'desc')
-      .get();
+    // Build query for resources
+    let query = db.collection('resources')
+      .where('studentId', '==', studentId);
+
+    // Add subject filter if provided
+    if (subject && typeof subject === 'string') {
+      query = query.where('subject', '==', subject);
+    }
+
+    const resourcesSnapshot = await query.orderBy('createdAt', 'desc').get();
 
     const resources = resourcesSnapshot.docs.map(doc => ({
       id: doc.id,

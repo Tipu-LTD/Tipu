@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -14,6 +15,7 @@ import {
   BarChart,
 } from 'lucide-react';
 import { UserRole } from '@/types/user';
+import { isAdult } from '@/utils/age';
 
 interface NavItem {
   to: string;
@@ -21,16 +23,7 @@ interface NavItem {
   label: string;
 }
 
-const navigationByRole: Record<UserRole, NavItem[]> = {
-  student: [
-    { to: '/dashboard/student', icon: Home, label: 'Dashboard' },
-    { to: '/tutors', icon: Users, label: 'Browse Tutors' },
-    { to: '/bookings', icon: Calendar, label: 'My Bookings' },
-    // TODO: Implement chat system
-    // { to: '/chat', icon: MessageSquare, label: 'Messages' },
-    // TODO: Implement resources library
-    // { to: '/resources', icon: BookOpen, label: 'Resources' },
-  ],
+const staticNavigationByRole: Record<Exclude<UserRole, 'student'>, NavItem[]> = {
   tutor: [
     { to: '/dashboard/tutor', icon: Home, label: 'Dashboard' },
     { to: '/bookings/requests', icon: Bell, label: 'Booking Requests' },
@@ -69,9 +62,38 @@ const navigationByRole: Record<UserRole, NavItem[]> = {
 export function DashboardSidebar() {
   const { user } = useAuth();
 
+  // Dynamic student navigation based on age
+  const studentNavItems = useMemo((): NavItem[] => {
+    if (!user || user.role !== 'student') return [];
+
+    const userIsAdult = user.dateOfBirth ? isAdult(user.dateOfBirth) : false;
+
+    const baseLinks: NavItem[] = [
+      { to: '/dashboard/student', icon: Home, label: 'Dashboard' },
+      { to: '/lessons', icon: BookOpen, label: 'Lessons' }
+    ];
+
+    // Only adults get booking management & tutor browsing
+    if (userIsAdult) {
+      baseLinks.push(
+        { to: '/tutors', icon: Users, label: 'Browse Tutors' },
+        { to: '/bookings', icon: Calendar, label: 'My Bookings' }
+      );
+    }
+
+    // TODO: Implement chat system
+    // if (userIsAdult) {
+    //   baseLinks.push({ to: '/chat', icon: MessageSquare, label: 'Messages' });
+    // }
+
+    return baseLinks;
+  }, [user]);
+
   if (!user) return null;
 
-  const navItems = navigationByRole[user.role] || [];
+  const navItems = user.role === 'student'
+    ? studentNavItems
+    : staticNavigationByRole[user.role] || [];
 
   return (
     <aside className="w-64 border-r bg-card min-h-[calc(100vh-57px)]">

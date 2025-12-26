@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { futureDateSchema } from '../utils/dateValidation'
 
 /**
  * Validation schemas for booking-related API endpoints
@@ -13,7 +14,7 @@ export const createBookingSchema = z.object({
   level: z.enum(['GCSE', 'A-Level'], {
     errorMap: () => ({ message: 'Level must be GCSE or A-Level' }),
   }),
-  scheduledAt: z.string().datetime('Invalid datetime format'),
+  scheduledAt: futureDateSchema, // Validates date is 1 hour to 1 year in the future
   price: z.number().int().positive('Price must be a positive integer'),
   duration: z.number().int().min(15, 'Duration must be at least 15 minutes').max(300, 'Duration cannot exceed 300 minutes').optional(),
 })
@@ -24,10 +25,32 @@ export const lessonReportSchema = z.object({
   notes: z.string().optional(),
 })
 
+// Allowed meeting platforms - prevents open redirect vulnerabilities
+// Only Microsoft Teams is used
+const ALLOWED_MEETING_DOMAINS = [
+  'teams.microsoft.com',
+]
+
 export const acceptBookingSchema = z.object({
-  meetingLink: z.string().url('Meeting link must be a valid URL').optional(), // Optional since Teams generates it
+  meetingLink: z.string().url('Meeting link must be a valid URL').refine(
+    (url) => {
+      try {
+        const urlObj = new URL(url)
+        return ALLOWED_MEETING_DOMAINS.some(domain =>
+          urlObj.hostname === domain || urlObj.hostname.endsWith(`.${domain}`)
+        )
+      } catch {
+        return false
+      }
+    },
+    { message: 'Meeting link must be from Microsoft Teams' }
+  ).optional(), // Optional since Teams generates it
 })
 
 export const declineBookingSchema = z.object({
   reason: z.string().min(10, 'Decline reason must be at least 10 characters'),
+})
+
+export const rescheduleBookingSchema = z.object({
+  newScheduledAt: futureDateSchema, // Validates date is 1 hour to 1 year in the future
 })

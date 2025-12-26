@@ -1,11 +1,21 @@
+import { isValidDate, parseFirestoreDate } from './date';
+
 /**
  * Calculate age from date of birth
- * @param dateOfBirth - Date of birth
- * @returns Age in years
+ * @param dateOfBirth - Date of birth (Date object, ISO string, or Firestore Timestamp)
+ * @returns Age in years (0 if invalid date)
  */
-export const calculateAge = (dateOfBirth: Date | string): number => {
+export const calculateAge = (dateOfBirth: Date | string | any): number => {
   const today = new Date();
-  const birthDate = new Date(dateOfBirth);
+
+  // Use parseFirestoreDate to handle all formats (Date, string, Firestore Timestamp)
+  const birthDate = parseFirestoreDate(dateOfBirth);
+
+  // Validate date
+  if (!isValidDate(birthDate)) {
+    console.error('calculateAge: Invalid date of birth', dateOfBirth);
+    return 0;  // Return 0 instead of NaN
+  }
 
   let age = today.getFullYear() - birthDate.getFullYear();
   const monthDiff = today.getMonth() - birthDate.getMonth();
@@ -15,7 +25,8 @@ export const calculateAge = (dateOfBirth: Date | string): number => {
     age--;
   }
 
-  return age;
+  // Never return negative age
+  return Math.max(0, age);
 };
 
 /**

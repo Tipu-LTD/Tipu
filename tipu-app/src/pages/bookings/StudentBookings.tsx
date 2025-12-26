@@ -120,7 +120,7 @@ export default function StudentBookings() {
         break;
       case 'upcoming':
         filtered = bookings.filter(b =>
-          b.status === 'confirmed' &&
+          (b.status === 'pending' || b.status === 'accepted' || b.status === 'confirmed') &&
           parseFirestoreDate(b.scheduledAt) >= now
         );
         break;
@@ -251,11 +251,11 @@ export default function StudentBookings() {
     }
   };
 
-  const handlePaymentSuccess = async () => {
+  const handlePaymentSuccess = async (paymentIntentId: string) => {
     try {
       // Confirm booking status after successful payment
       if (paymentBooking) {
-        await bookingsApi.confirmPayment(paymentBooking.id);
+        await bookingsApi.confirmPayment(paymentBooking.id, paymentIntentId);
 
         // Track this booking as recently paid (prevent modal reopening)
         setRecentlyPaidBookingIds(prev => new Set(prev).add(paymentBooking.id));
@@ -278,6 +278,16 @@ export default function StudentBookings() {
     } catch (error) {
       console.error('Failed to confirm booking:', error);
       toast.error('Payment succeeded but booking status update failed. Please refresh the page.');
+    }
+  };
+
+  // Unified handler for Pay Now button
+  const handlePaymentClick = (booking: Booking) => {
+    // Route based on payment auth type
+    if (booking.paymentAuthType === 'immediate_charge') {
+      handlePayNow(booking);
+    } else {
+      handleAuthorize(booking);
     }
   };
 
@@ -357,17 +367,27 @@ export default function StudentBookings() {
                                   ✓ Payment Saved
                                 </p>
                                 <p className="text-sm text-green-700">
-                                  You'll be charged <strong>£{(booking.price / 100).toFixed(2)}</strong> on{' '}
-                                  {format(parseFirestoreDate(booking.paymentScheduledFor), 'PPP')}
+                                  {booking.paymentScheduledFor ? (
+                                    <>
+                                      You'll be charged <strong>£{(booking.price / 100).toFixed(2)}</strong> on{' '}
+                                      {format(parseFirestoreDate(booking.paymentScheduledFor), 'PPP')}
+                                    </>
+                                  ) : (
+                                    <>
+                                      You'll be charged <strong>£{(booking.price / 100).toFixed(2)}</strong> immediately after the lesson
+                                    </>
+                                  )}
                                 </p>
                               </AlertDescription>
                             </Alert>
 
                             {/* Prominent cancellation policy badge (user preference) */}
-                            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-100 border border-green-300 rounded-full text-sm font-medium text-green-800">
-                              <span>✓</span>
-                              Free cancellation until {format(parseFirestoreDate(booking.paymentScheduledFor), 'PPP')}
-                            </div>
+                            {booking.paymentScheduledFor && (
+                              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-100 border border-green-300 rounded-full text-sm font-medium text-green-800">
+                                <span>✓</span>
+                                Free cancellation until {format(parseFirestoreDate(booking.paymentScheduledFor), 'PPP')}
+                              </div>
+                            )}
                           </>
                         )}
 
@@ -393,6 +413,8 @@ export default function StudentBookings() {
                       tutorPhoto={tutor?.photoURL}
                       studentName={user?.role === 'parent' ? student?.displayName : undefined}
                       onViewDetails={(id) => navigate(`/bookings/${id}`)}
+                      onPayNow={handlePaymentClick}
+                      isCreatingPayment={isCreatingPayment}
                     />
                   </div>
                 );
@@ -424,6 +446,8 @@ export default function StudentBookings() {
                     tutorPhoto={tutor?.photoURL}
                     studentName={user?.role === 'parent' ? student?.displayName : undefined}
                     onViewDetails={(id) => navigate(`/bookings/${id}`)}
+                    onPayNow={handlePaymentClick}
+                    isCreatingPayment={isCreatingPayment}
                   />
                 );
               })
@@ -447,6 +471,8 @@ export default function StudentBookings() {
                     tutorPhoto={tutor?.photoURL}
                     studentName={user?.role === 'parent' ? student?.displayName : undefined}
                     onViewDetails={(id) => navigate(`/bookings/${id}`)}
+                    onPayNow={handlePaymentClick}
+                    isCreatingPayment={isCreatingPayment}
                   />
                 );
               })
@@ -470,6 +496,8 @@ export default function StudentBookings() {
                     tutorPhoto={tutor?.photoURL}
                     studentName={user?.role === 'parent' ? student?.displayName : undefined}
                     onViewDetails={(id) => navigate(`/bookings/${id}`)}
+                    onPayNow={handlePaymentClick}
+                    isCreatingPayment={isCreatingPayment}
                   />
                 );
               })

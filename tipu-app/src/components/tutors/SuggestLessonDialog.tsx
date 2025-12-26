@@ -50,11 +50,30 @@ export function SuggestLessonDialog({
       return;
     }
 
+    // Validate date is at least 1 hour from now and within 1 year
+    const selectedDate = new Date(scheduledAt);
+    const now = new Date();
+    const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+    const oneYearFromNow = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+
+    if (selectedDate < oneHourFromNow) {
+      toast.error('Lesson must be scheduled at least 1 hour from now');
+      return;
+    }
+
+    if (selectedDate > oneYearFromNow) {
+      toast.error('Lesson cannot be scheduled more than 1 year in advance');
+      return;
+    }
+
+    // Convert datetime-local format to ISO 8601 format for backend
+    const isoDateTime = selectedDate.toISOString();
+
     suggestMutation.mutate({
       studentId,
       subject,
       level,
-      scheduledAt,
+      scheduledAt: isoDateTime,
       duration,
       notes
     });
@@ -118,8 +137,12 @@ export function SuggestLessonDialog({
               type="datetime-local"
               value={scheduledAt}
               onChange={(e) => setScheduledAt(e.target.value)}
-              min={new Date().toISOString().slice(0, 16)}
+              min={new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16)}
+              max={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16)}
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Must be at least 1 hour from now, within the next year
+            </p>
           </div>
 
           {/* Duration */}

@@ -75,7 +75,10 @@ export function RescheduleDialog({
               <span className="font-medium">Current time:</span>
             </div>
             <p className="mt-1 text-sm">
-              {format(parseFirestoreDate(booking.scheduledAt), 'PPP p')}
+              {booking.scheduledAt
+                ? format(parseFirestoreDate(booking.scheduledAt), 'PPP p')
+                : 'Date not set'
+              }
             </p>
           </div>
 

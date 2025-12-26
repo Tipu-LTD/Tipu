@@ -9,8 +9,14 @@
  * Calculate age from date of birth
  * @param dateOfBirth - User's date of birth
  * @returns Age in years
+ * @throws Error if dateOfBirth is invalid
  */
 export function calculateAge(dateOfBirth: Date): number {
+  // Validate input
+  if (!(dateOfBirth instanceof Date) || isNaN(dateOfBirth.getTime())) {
+    throw new Error('Invalid date of birth provided to calculateAge')
+  }
+
   const today = new Date()
   let age = today.getFullYear() - dateOfBirth.getFullYear()
   const monthDiff = today.getMonth() - dateOfBirth.getMonth()
@@ -20,7 +26,8 @@ export function calculateAge(dateOfBirth: Date): number {
     age--
   }
 
-  return age
+  // Never return negative age
+  return Math.max(0, age)
 }
 
 /**

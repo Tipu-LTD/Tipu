@@ -42,7 +42,7 @@ export const createBooking = async (input: CreateBookingInput): Promise<Booking>
     tutorId: input.tutorId,
     subject: input.subject,
     level: input.level,
-    scheduledAt: FieldValue.serverTimestamp() as any, // Will be set to actual date
+    scheduledAt: input.scheduledAt,  // Direct assignment instead of serverTimestamp
     duration: input.duration || 60,
     status: 'pending',
     price: input.price,
@@ -50,21 +50,17 @@ export const createBooking = async (input: CreateBookingInput): Promise<Booking>
 
     // Payment authorization tracking
     paymentAuthType,
-    paymentScheduledFor: paymentScheduledFor ? (FieldValue.serverTimestamp() as any) : null,
+    paymentScheduledFor: paymentScheduledFor,  // Direct assignment instead of serverTimestamp
     requiresAuthCreation,
     paymentAttempted: false,
     paymentRetryCount: 0,
 
-    createdAt: FieldValue.serverTimestamp() as any,
+    createdAt: FieldValue.serverTimestamp() as any,  // Only use serverTimestamp for record metadata
     updatedAt: FieldValue.serverTimestamp() as any,
   }
 
-  // Set the actual scheduled times
-  await bookingRef.set({
-    ...booking,
-    scheduledAt: input.scheduledAt,
-    paymentScheduledFor,
-  })
+  // Save to Firestore
+  await bookingRef.set(booking)
 
   logger.info(`Booking created with ${paymentAuthType} payment flow`, {
     bookingId: bookingRef.id,
@@ -131,7 +127,10 @@ export const getUserBookings = async (
       .get()
 
     logger.info(`Fetched ${snapshot.size} bookings for parent ${userId} (${childrenIds.length} children)`)
-    return snapshot.docs.map((doc) => doc.data() as Booking)
+    return snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data()
+    } as Booking))
   }
 
   // Handle student and tutor roles
@@ -142,7 +141,10 @@ export const getUserBookings = async (
     .orderBy('scheduledAt', 'desc')
     .get()
 
-  return snapshot.docs.map((doc) => doc.data() as Booking)
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data()
+  } as Booking))
 }
 
 /**
@@ -262,5 +264,8 @@ export const getAllBookings = async (): Promise<Booking[]> => {
     .orderBy('scheduledAt', 'desc')
     .get()
 
-  return snapshot.docs.map((doc) => doc.data() as Booking)
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data()
+  } as Booking))
 }

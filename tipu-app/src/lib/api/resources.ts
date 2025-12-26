@@ -30,3 +30,7 @@ export const resourcesApi = {
       method: 'DELETE'
     })
 };
+
+// Convenience helper function for easier imports
+export const getStudentResources = (studentId: string) =>
+  resourcesApi.getStudentResources(studentId);

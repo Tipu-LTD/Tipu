@@ -4,6 +4,7 @@ import { db } from '../config/firebase'
 import { FieldValue } from 'firebase-admin/firestore'
 import { ApiError } from '../middleware/errorHandler'
 import { z } from 'zod'
+import { futureDateSchema } from '../utils/dateValidation'
 
 const router = Router()
 
@@ -11,7 +12,7 @@ const suggestLessonSchema = z.object({
   studentId: z.string().min(1, 'Student ID required'),
   subject: z.enum(['Maths', 'Physics', 'Computer Science', 'Python']),
   level: z.enum(['GCSE', 'A-Level']),
-  scheduledAt: z.string().datetime('Invalid date format'),
+  scheduledAt: futureDateSchema, // Validates date is 1 hour to 1 year in the future
   duration: z.number().int().min(15).max(300).optional(),
   notes: z.string().optional(),
 })
@@ -58,9 +59,11 @@ router.get('/my-students', authenticate, async (req: AuthRequest, res, next) => 
           (b) => b.data().studentId === studentId && b.data().status === 'completed'
         ).length
 
+        // Include confirmed, accepted, and tutor-suggested bookings in upcoming count
+        const UPCOMING_STATUSES = ['confirmed', 'accepted', 'tutor-suggested']
         const upcomingLessons = bookingsSnapshot.docs.filter(
           (b) => b.data().studentId === studentId &&
-                 b.data().status === 'confirmed' &&
+                 UPCOMING_STATUSES.includes(b.data().status) &&
                  b.data().scheduledAt.toDate() >= now
         ).length
 

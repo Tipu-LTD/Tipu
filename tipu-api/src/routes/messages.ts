@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { authenticate, AuthRequest } from '../middleware/auth'
 import * as messageService from '../services/messageService'
+import { createConversationSchema, sendMessageSchema } from '../schemas/message.schema'
 
 const router = Router()
 
@@ -110,7 +111,8 @@ router.get('/conversations', authenticate, async (req: AuthRequest, res, next) =
  */
 router.post('/conversations', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const { participantIds } = req.body
+    // Validate input
+    const { participantIds } = createConversationSchema.parse(req.body)
 
     const conversation = await messageService.createConversation({
       participantIds,
@@ -250,11 +252,14 @@ router.get('/conversations/:id', authenticate, async (req, res, next) => {
  */
 router.post('/conversations/:id/messages', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    // Validate input
+    const { text, fileUrl } = sendMessageSchema.parse(req.body)
+
     const message = await messageService.sendMessage({
       conversationId: req.params.id,
       senderId: req.user!.uid,
-      text: req.body.text,
-      fileUrl: req.body.fileUrl,
+      text,
+      fileUrl,
     })
 
     res.status(201).json(message)

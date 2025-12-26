@@ -26,6 +26,8 @@ interface BookingCardProps {
   showActions?: boolean;
   onAccept?: (id: string) => void;
   onDecline?: (id: string) => void;
+  onPayNow?: (booking: Booking) => void;
+  isCreatingPayment?: boolean;
 }
 
 const statusColors: Record<BookingStatus, string> = {
@@ -57,7 +59,9 @@ export function BookingCard({
   onViewDetails,
   showActions,
   onAccept,
-  onDecline
+  onDecline,
+  onPayNow,
+  isCreatingPayment
 }: BookingCardProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -145,11 +149,21 @@ export function BookingCard({
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Calendar className="h-4 w-4" />
-            <span>{format(parseFirestoreDate(booking.scheduledAt), 'PPP')}</span>
+            <span>
+              {booking.scheduledAt
+                ? format(parseFirestoreDate(booking.scheduledAt), 'PPP')
+                : 'Date not set'
+              }
+            </span>
           </div>
           <div className="flex items-center gap-2 text-muted-foreground">
             <Clock className="h-4 w-4" />
-            <span>{format(parseFirestoreDate(booking.scheduledAt), 'p')}</span>
+            <span>
+              {booking.scheduledAt
+                ? format(parseFirestoreDate(booking.scheduledAt), 'p')
+                : 'Time not set'
+              }
+            </span>
           </div>
         </div>
 
@@ -159,7 +173,7 @@ export function BookingCard({
         </div>
 
         {/* Payment Schedule Info for Accepted Bookings */}
-        {booking.status === 'accepted' && !booking.isPaid && (
+        {booking.status === 'accepted' && !booking.isPaid && !booking.paymentIntentId && !booking.savedPaymentMethodId && (
           <Alert className="mt-2">
             <CreditCard className="h-4 w-4" />
             <AlertDescription className="text-sm">
@@ -169,7 +183,18 @@ export function BookingCard({
                   <strong>{format(parseFirestoreDate(booking.paymentScheduledFor), 'PPP')}</strong>
                 </>
               ) : (
-                <strong>Payment required before lesson</strong>
+                <>Payment will be taken <strong>immediately after the lesson</strong></>
+              )}
+              {onPayNow && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="w-full mt-2"
+                  onClick={() => onPayNow(booking)}
+                  disabled={isCreatingPayment}
+                >
+                  {isCreatingPayment ? 'Opening payment...' : 'Pay Now'}
+                </Button>
               )}
             </AlertDescription>
           </Alert>
@@ -242,8 +267,8 @@ export function BookingCard({
             </div>
           )}
 
-          {/* Show reschedule/cancel for pending or confirmed bookings (only if not past) */}
-          {(booking.status === 'pending' || booking.status === 'confirmed') && !isPastLesson && (
+          {/* Show reschedule/cancel for pending, accepted, or confirmed bookings (only if not past) */}
+          {(booking.status === 'pending' || booking.status === 'accepted' || booking.status === 'confirmed') && !isPastLesson && (
             <div className="flex gap-2">
               <Button
                 onClick={() => setRescheduleOpen(true)}

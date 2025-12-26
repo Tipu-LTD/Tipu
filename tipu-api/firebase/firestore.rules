@@ -35,13 +35,10 @@ service cloud.firestore {
     // Check if user is a parent of the specified student
     function isParentOfStudent(studentId) {
       let parentData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-      return hasRole('parent') && studentId in parentData.childrenIds;
-    }
 
-    // Check if user is involved in a booking (student or tutor)
-    function isBookingParticipant(bookingData) {
-      return bookingData.studentId == request.auth.uid ||
-             bookingData.tutorId == request.auth.uid;
+      return hasRole('parent') &&
+             parentData.childrenIds != null &&
+             parentData.childrenIds.hasAny([studentId]);
     }
 
     // ============================================
@@ -144,28 +141,6 @@ service cloud.firestore {
         // Only admins can delete messages
         allow delete: if hasRole('admin');
       }
-    }
-
-    // ============================================
-    // RESOURCES COLLECTION
-    // ============================================
-    match /resources/{resourceId} {
-      // All authenticated users can read resources
-      // (Further filtering by isPublic, studentIds done at application level)
-      allow read: if isSignedIn();
-
-      // Tutors and admins can create resources
-      allow create: if isSignedIn() && (hasRole('tutor') || hasRole('admin'));
-
-      // Tutors can update their own resources
-      // Admins can update any resource
-      allow update: if isSignedIn() && (
-        (hasRole('tutor') && resource.data.uploadedBy == request.auth.uid) ||
-        hasRole('admin')
-      );
-
-      // Only admins can delete resources
-      allow delete: if hasRole('admin');
     }
 
     // ============================================

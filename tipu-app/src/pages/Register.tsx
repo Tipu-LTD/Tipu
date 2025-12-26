@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { signUpWithEmail } from '@/lib/firebase/auth';
 import { authApi } from '@/lib/api/auth';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,15 +14,17 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { GraduationCap, Users, Heart, ArrowLeft } from 'lucide-react';
+import { GraduationCap, Users, Heart, ArrowLeft, AlertCircle } from 'lucide-react';
 import { UserRole, Subject } from '@/types/user';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { calculateAge } from '@/utils/age';
 
 const roles = [
   {
     value: 'student' as UserRole,
     icon: GraduationCap,
     title: 'Student',
-    description: 'Book sessions and learn from expert tutors'
+    description: 'Book sessions and learn from expert tutors (18+ only)'
   },
   {
     value: 'tutor' as UserRole,
@@ -46,6 +49,7 @@ const basicInfoSchema = z.object({
     .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
     .regex(/[0-9]/, 'Password must contain at least one number'),
   confirmPassword: z.string(),
+  dateOfBirth: z.string().optional(),
 }).refine(data => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ['confirmPassword']
@@ -55,11 +59,15 @@ type BasicInfoData = z.infer<typeof basicInfoSchema>;
 
 const Register = () => {
   const navigate = useNavigate();
+  const { refreshProfile } = useAuth();
   const [step, setStep] = useState(1);
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [basicInfo, setBasicInfo] = useState<BasicInfoData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [studentDOB, setStudentDOB] = useState('');
+  const [studentAge, setStudentAge] = useState<number | null>(null);
+  const [showUnder18Warning, setShowUnder18Warning] = useState(false);
 
   // Role-specific form data
   const [tutorBio, setTutorBio] = useState('');
@@ -77,8 +85,39 @@ const Register = () => {
   };
 
   const handleBasicInfoSubmit = (data: BasicInfoData) => {
+    // Block submission for students under 18
+    if (selectedRole === 'student') {
+      if (!data.dateOfBirth) {
+        toast.error('Date of birth is required for student accounts');
+        return;
+      }
+
+      const age = calculateAge(data.dateOfBirth);
+      if (age < 18) {
+        toast.error('Students under 18 must be registered by a parent');
+        return;
+      }
+    }
+
     setBasicInfo(data);
     setStep(3);
+  };
+
+  const handleDOBChange = (dob: string) => {
+    if (!dob) {
+      setStudentAge(null);
+      setShowUnder18Warning(false);
+      return;
+    }
+
+    const age = calculateAge(dob);
+    setStudentAge(age);
+
+    if (age < 18) {
+      setShowUnder18Warning(true);
+    } else {
+      setShowUnder18Warning(false);
+    }
   };
 
   const handleSubjectToggle = (subject: Subject) => {
@@ -122,7 +161,13 @@ const Register = () => {
         email: basicInfo.email,
         displayName: basicInfo.displayName,
         role: selectedRole,
+        password: basicInfo.password, // Include password for validation (backend will use uid)
       };
+
+      // Add dateOfBirth for students
+      if (selectedRole === 'student' && basicInfo.dateOfBirth) {
+        registrationData.dateOfBirth = new Date(basicInfo.dateOfBirth).toISOString();
+      }
 
       // Add role-specific data
       if (selectedRole === 'tutor') {
@@ -133,6 +178,9 @@ const Register = () => {
 
       // Register with backend
       await authApi.register(registrationData);
+
+      // Refresh profile to load the newly created Firestore profile
+      await refreshProfile();
 
       toast.success('Account created successfully!');
 
@@ -146,11 +194,17 @@ const Register = () => {
       navigate(dashboardMap[selectedRole]);
     } catch (error: any) {
       let errorMessage = 'Failed to create account. Please try again.';
-      if (error.code === 'auth/email-already-in-use') {
+
+      if (error.response?.data?.code === 'PARENT_REQUIRED') {
+        errorMessage = error.response.data.message;
+        setShowUnder18Warning(true);
+        setStep(2);
+      } else if (error.code === 'auth/email-already-in-use') {
         errorMessage = 'An account with this email already exists';
       } else if (error.code === 'auth/weak-password') {
         errorMessage = 'Password is too weak, please choose a stronger password';
       }
+
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
@@ -205,6 +259,18 @@ const Register = () => {
                   );
                 })}
               </div>
+
+              {/* Age requirement notice */}
+              {selectedRole === 'student' && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Age Requirement:</strong> You must be 18 or older to create a student account.
+                    If you're under 18, please ask a parent to register and add you as their child.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <Button
                 className="w-full"
                 disabled={!selectedRole}
@@ -247,6 +313,48 @@ const Register = () => {
                   <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
                 )}
               </div>
+
+              {/* Date of Birth - Only show for students */}
+              {selectedRole === 'student' && (
+                <div className="space-y-2">
+                  <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                  <Input
+                    id="dateOfBirth"
+                    type="date"
+                    {...register('dateOfBirth')}
+                    max={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => {
+                      register('dateOfBirth').onChange(e);
+                      handleDOBChange(e.target.value);
+                    }}
+                  />
+                  {errors.dateOfBirth && (
+                    <p className="text-sm text-destructive">{errors.dateOfBirth.message}</p>
+                  )}
+                  {studentAge !== null && (
+                    <p className="text-sm text-muted-foreground">
+                      Age: {studentAge} years old
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Under 18 Warning Alert */}
+              {showUnder18Warning && selectedRole === 'student' && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Students under 18 cannot register directly.</strong>
+                    <br />
+                    Please ask your parent or guardian to:
+                    <ol className="mt-2 ml-4 list-decimal text-sm">
+                      <li>Create a Parent account</li>
+                      <li>Add you as their child from their dashboard</li>
+                    </ol>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="flex gap-2">
                 <Button type="button" variant="outline" onClick={() => setStep(1)}>
                   Back
@@ -337,6 +445,9 @@ const Register = () => {
                 <p><strong>Role:</strong> {selectedRole}</p>
                 <p><strong>Name:</strong> {basicInfo.displayName}</p>
                 <p><strong>Email:</strong> {basicInfo.email}</p>
+                {selectedRole === 'student' && basicInfo.dateOfBirth && studentAge !== null && (
+                  <p><strong>Age:</strong> {studentAge} years old</p>
+                )}
                 {selectedRole === 'tutor' && (
                   <>
                     <p><strong>Subjects:</strong> {tutorSubjects.join(', ')}</p>

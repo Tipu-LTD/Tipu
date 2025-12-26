@@ -59,9 +59,14 @@ export interface UpdateUserInput {
   displayName?: string
   photoURL?: string
   bio?: string
+  // Student fields
+  dateOfBirth?: string
+  enrolledSubjects?: Subject[]
+  examBoards?: Record<string, string>
+  // Tutor fields
   subjects?: Subject[]
   hourlyRates?: {
-    GCSE: number
-    'A-Level': number
+    GCSE?: number
+    'A-Level'?: number
   }
 }

@@ -118,7 +118,12 @@ export default function BookingDetails() {
                 <Calendar className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm text-muted-foreground">Date</p>
-                  <p className="font-medium">{format(parseFirestoreDate(booking.scheduledAt), 'PPPP')}</p>
+                  <p className="font-medium">
+                    {booking.scheduledAt
+                      ? format(parseFirestoreDate(booking.scheduledAt), 'PPPP')
+                      : 'Date not set'
+                    }
+                  </p>
                 </div>
               </div>
 
@@ -129,7 +134,10 @@ export default function BookingDetails() {
                 <div>
                   <p className="text-sm text-muted-foreground">Time & Duration</p>
                   <p className="font-medium">
-                    {format(parseFirestoreDate(booking.scheduledAt), 'p')} ({booking.duration}h)
+                    {booking.scheduledAt
+                      ? `${format(parseFirestoreDate(booking.scheduledAt), 'p')} (${booking.duration}h)`
+                      : `Duration: ${booking.duration}h (time not set)`
+                    }
                   </p>
                 </div>
               </div>
@@ -221,7 +229,7 @@ export default function BookingDetails() {
         </div>
 
         {/* Actions */}
-        {(booking.status === 'pending' || booking.status === 'confirmed') && !isPastLesson && (
+        {(booking.status === 'pending' || booking.status === 'accepted' || booking.status === 'confirmed') && !isPastLesson && (
           <Card>
             <CardHeader>
               <CardTitle>Actions</CardTitle>

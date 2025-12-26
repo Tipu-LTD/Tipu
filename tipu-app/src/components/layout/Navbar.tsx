@@ -35,7 +35,12 @@ export function Navbar() {
     <nav className="border-b bg-card px-6 py-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <h1 className="text-xl font-bold">TIPU Academy</h1>
+          <button
+            onClick={() => navigate('/')}
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+          >
+            <img src="/tipu-logo.png" alt="Tipu" className="h-10 md:h-12 w-auto" />
+          </button>
         </div>
         
         <DropdownMenu>

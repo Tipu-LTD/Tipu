@@ -59,9 +59,51 @@ export const confirmPayment = async (
     timestamp: new Date().toISOString(),
   })
 
+  // Validate payment intent ID format before saving to database
+  if (!paymentIntentId || !paymentIntentId.startsWith('pi_')) {
+    const error = new Error(`Invalid payment intent ID: ${paymentIntentId}`)
+    logger.error('❌ [PAYMENT DEBUG] Invalid payment intent ID in confirmPayment', {
+      bookingId,
+      paymentIntentId,
+      error: error.message,
+    })
+    throw new ApiError('Invalid payment intent ID format', 400)
+  }
+
   const bookingRef = db.collection('bookings').doc(bookingId)
 
-  // Update payment status first
+  // Verify booking exists and check for duplicate confirmations (idempotency)
+  const bookingSnap = await bookingRef.get()
+  if (!bookingSnap.exists) {
+    throw new ApiError('Booking not found', 404)
+  }
+
+  const booking = bookingSnap.data()
+
+  // Check if payment intent ID is already set (idempotency check)
+  if (booking?.paymentIntentId && booking.paymentIntentId !== paymentIntentId) {
+    logger.warn('⚠️ [PAYMENT DEBUG] Booking already has different payment intent ID', {
+      bookingId,
+      existingPaymentIntentId: booking.paymentIntentId,
+      newPaymentIntentId: paymentIntentId,
+    })
+    // If the existing ID is the placeholder, allow overwrite
+    if (booking.paymentIntentId === 'frontend-confirmation') {
+      logger.info('✅ [PAYMENT DEBUG] Overwriting placeholder payment intent ID', {
+        bookingId,
+        oldPaymentIntentId: booking.paymentIntentId,
+        newPaymentIntentId: paymentIntentId,
+      })
+    } else {
+      // Real IDs should match - this might be a duplicate confirmation
+      throw new ApiError(
+        'Booking already confirmed with a different payment intent',
+        409
+      )
+    }
+  }
+
+  // Update payment status
   logger.info('💾 [PAYMENT DEBUG] Updating booking with payment confirmation', {
     bookingId,
     updates: {
@@ -74,6 +116,7 @@ export const confirmPayment = async (
   await bookingRef.update({
     isPaid: true,
     paymentIntentId,
+    paymentCapturedAt: FieldValue.serverTimestamp(),
     status: 'confirmed',
     updatedAt: FieldValue.serverTimestamp(),
   })

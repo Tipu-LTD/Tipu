@@ -19,8 +19,8 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// Explicitly set persistence to LOCAL (IndexedDB) to ensure users stay logged in
-// across browser sessions, page refreshes, and closing/reopening the browser
+// Set default persistence to LOCAL (IndexedDB) to ensure users stay logged in
+// across browser sessions. This can be overridden per-login via signInWithEmail.
 setPersistence(auth, browserLocalPersistence).catch((error) => {
-  console.error('Failed to set auth persistence:', error);
+  console.error('Failed to set default auth persistence:', error);
 });

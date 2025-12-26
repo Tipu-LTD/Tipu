@@ -53,7 +53,10 @@ const TutorDashboard = () => {
     b => b.status === 'accepted' &&
     (b.paymentIntentId || b.savedPaymentMethodId) // Has payment authorization
   );
-  const upcomingLessons = bookings.filter(b => b.status === 'confirmed' && parseFirestoreDate(b.scheduledAt) >= new Date());
+  const upcomingLessons = bookings.filter(b =>
+    (b.status === 'pending' || b.status === 'accepted' || b.status === 'confirmed') &&
+    parseFirestoreDate(b.scheduledAt) >= new Date()
+  );
   const completedLessons = bookings.filter(b => b.status === 'completed');
 
   // Filter bookings with pending reschedule requests

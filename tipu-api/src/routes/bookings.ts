@@ -8,11 +8,16 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { ApiError } from '../middleware/errorHandler'
 import { logger } from '../config/logger'
 import { z } from 'zod'
-import { createBookingSchema, lessonReportSchema, acceptBookingSchema, declineBookingSchema } from '../schemas/booking.schema'
+import { createBookingSchema, lessonReportSchema, acceptBookingSchema, declineBookingSchema, rescheduleBookingSchema } from '../schemas/booking.schema'
 import { calculateAge } from '../utils/ageCheck'
 import { stripe } from '../config/stripe'
 
 const router = Router()
+
+// Query parameter validation schema
+const getBookingsQuerySchema = z.object({
+  status: z.enum(['pending', 'confirmed', 'completed', 'cancelled', 'declined']).optional(),
+})
 
 router.post('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
@@ -28,13 +33,29 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
       const userData = userDoc.data()
 
       if (userData?.dateOfBirth) {
-        const age = calculateAge(userData.dateOfBirth.toDate())
+        try {
+          const birthDate = userData.dateOfBirth.toDate?.() || new Date(userData.dateOfBirth)
+          const age = calculateAge(birthDate)
 
-        if (age < 18) {
-          return res.status(403).json({
-            error: 'Students under 18 cannot book lessons directly',
-            code: 'PARENT_BOOKING_REQUIRED',
-            message: 'Please ask your parent to book lessons for you',
+          if (isNaN(age) || age < 0) {
+            return res.status(400).json({
+              error: 'Invalid date of birth',
+              code: 'INVALID_DATE_OF_BIRTH',
+            })
+          }
+
+          if (age < 18) {
+            return res.status(403).json({
+              error: 'Students under 18 cannot book lessons directly',
+              code: 'PARENT_BOOKING_REQUIRED',
+              message: 'Please ask your parent to book lessons for you',
+            })
+          }
+        } catch (error) {
+          logger.error('Error calculating age:', error)
+          return res.status(400).json({
+            error: 'Invalid date of birth format',
+            code: 'INVALID_DATE_OF_BIRTH',
           })
         }
       }
@@ -79,14 +100,16 @@ router.post('/', authenticate, async (req: AuthRequest, res, next) => {
 
 router.get('/', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    // Validate query parameters (prevents NoSQL injection)
+    const { status: statusFilter } = getBookingsQuerySchema.parse(req.query)
+
     const role = req.user!.role || 'student'
-    console.log('GET /bookings - User:', req.user!.uid, 'Role:', role, 'Status filter:', req.query.status)
+    console.log('GET /bookings - User:', req.user!.uid, 'Role:', role, 'Status filter:', statusFilter)
 
     let bookings = await bookingService.getUserBookings(req.user!.uid, role as any)
     console.log('Bookings retrieved from DB:', bookings.length)
 
     // Filter by status if provided
-    const statusFilter = req.query.status as string | undefined
     if (statusFilter) {
       const beforeCount = bookings.length
       bookings = bookings.filter(b => b.status === statusFilter)
@@ -101,7 +124,32 @@ router.get('/', authenticate, async (req: AuthRequest, res, next) => {
 
 router.get('/:id', authenticate, async (req: AuthRequest, res, next) => {
   try {
+    const user = req.user!
     const booking = await bookingService.getBookingById(req.params.id)
+
+    if (!booking) {
+      return res.status(404).json({ error: 'Booking not found' })
+    }
+
+    // Authorization check: user must be participant, parent, or admin
+    const isParticipant =
+      booking.studentId === user.uid ||
+      booking.tutorId === user.uid
+
+    let isParentOfStudent = false
+    if (user.role === 'parent') {
+      const { db } = await import('../config/firebase')
+      const parentDoc = await db.collection('users').doc(user.uid).get()
+      const parentData = parentDoc.data()
+      isParentOfStudent = parentData?.childrenIds?.includes(booking.studentId) || false
+    }
+
+    const isAdmin = user.role === 'admin'
+
+    if (!isParticipant && !isParentOfStudent && !isAdmin) {
+      return res.status(403).json({ error: 'Forbidden' })
+    }
+
     res.json(booking)
   } catch (error) {
     next(error)
@@ -307,16 +355,44 @@ router.post('/:id/lesson-report', authenticate, async (req: AuthRequest, res, ne
 router.patch('/:id/confirm-payment', authenticate, async (req: AuthRequest, res, next) => {
   try {
     const bookingId = req.params.id
-    const paymentIntentId = req.body.paymentIntentId || 'frontend-confirmation'
+    const { paymentIntentId } = req.body
     const userId = req.user!.uid
     const userRole = req.user!.role
+
+    // Validate payment intent ID is provided
+    if (!paymentIntentId) {
+      logger.error('❌ /confirm-payment called without paymentIntentId', {
+        bookingId,
+        userId,
+        userRole,
+        requestBody: JSON.stringify(req.body),
+      })
+      return res.status(400).json({
+        error: 'Payment intent ID is required',
+        code: 'MISSING_PAYMENT_INTENT_ID'
+      })
+    }
+
+    // Validate payment intent ID format (Stripe IDs start with pi_)
+    if (!paymentIntentId.startsWith('pi_')) {
+      logger.error('❌ /confirm-payment called with invalid paymentIntentId format', {
+        bookingId,
+        paymentIntentId,
+        userId,
+        userRole,
+      })
+      return res.status(400).json({
+        error: 'Invalid payment intent ID format',
+        code: 'INVALID_PAYMENT_INTENT_ID',
+        details: 'Payment intent ID must start with pi_'
+      })
+    }
 
     logger.info('📨 [ENDPOINT DEBUG] /confirm-payment endpoint called', {
       bookingId,
       paymentIntentId,
       userId,
       userRole,
-      requestBody: JSON.stringify(req.body),
       timestamp: new Date().toISOString(),
     })
 
@@ -398,14 +474,15 @@ router.post('/:id/generate-meeting', authenticate, async (req: AuthRequest, res,
     // Check if user is the parent of the student
     let isParent = false
     if (userRole === 'parent' && booking?.studentId) {
-      const studentDoc = await db.collection('users').doc(booking.studentId).get()
-      const student = studentDoc.data()
-      isParent = student?.parentId === userId
+      // FIXED: Fetch childrenIds from PARENT doc, not parentId from student doc
+      const parentDoc = await db.collection('users').doc(userId).get()
+      const parentData = parentDoc.data()
+      isParent = parentData?.childrenIds?.includes(booking.studentId) || false
 
       logger.info('👨‍👩‍👧 [ENDPOINT DEBUG] Parent check', {
         userRole,
         studentId: booking.studentId,
-        studentParentId: student?.parentId,
+        parentChildrenIds: parentData?.childrenIds,
         isParent,
       })
     }
@@ -482,11 +559,9 @@ router.post('/:id/request-reschedule', authenticate, async (req: AuthRequest, re
     const userId = req.user!.uid
     const userRole = req.user!.role
     const bookingId = req.params.id
-    const { newScheduledAt } = req.body
 
-    if (!newScheduledAt) {
-      throw new ApiError('New scheduled date/time is required', 400)
-    }
+    // Validate input with date validation
+    const { newScheduledAt } = rescheduleBookingSchema.parse(req.body)
 
     const bookingDoc = await db.collection('bookings').doc(bookingId).get()
 
@@ -508,14 +583,20 @@ router.post('/:id/request-reschedule', authenticate, async (req: AuthRequest, re
       const studentDoc = await db.collection('users').doc(userId).get()
       const studentData = studentDoc.data()
       if (studentData?.dateOfBirth) {
-        const age = calculateAge(studentData.dateOfBirth.toDate())
-        isAuthorized = age >= 18
+        try {
+          const birthDate = studentData.dateOfBirth.toDate?.() || new Date(studentData.dateOfBirth)
+          const age = calculateAge(birthDate)
+          isAuthorized = !isNaN(age) && age >= 0 && age >= 18
+        } catch (error) {
+          logger.error('Error calculating age for authorization:', error)
+          isAuthorized = false
+        }
       }
     } else if (userRole === 'parent') {
-      // Check if parent owns the student
-      const studentDoc = await db.collection('users').doc(booking?.studentId).get()
-      const student = studentDoc.data()
-      isAuthorized = student?.parentId === userId
+      // FIXED: Fetch childrenIds from PARENT doc, not parentId from student doc
+      const parentDoc = await db.collection('users').doc(userId).get()
+      const parentData = parentDoc.data()
+      isAuthorized = parentData?.childrenIds?.includes(booking?.studentId) || false
     }
 
     if (!isAuthorized) {
@@ -620,14 +701,20 @@ router.post('/:id/approve-reschedule', authenticate, async (req: AuthRequest, re
       const studentDoc = await db.collection('users').doc(userId).get()
       const studentData = studentDoc.data()
       if (studentData?.dateOfBirth) {
-        const age = calculateAge(studentData.dateOfBirth.toDate())
-        isAuthorized = age >= 18
+        try {
+          const birthDate = studentData.dateOfBirth.toDate?.() || new Date(studentData.dateOfBirth)
+          const age = calculateAge(birthDate)
+          isAuthorized = !isNaN(age) && age >= 0 && age >= 18
+        } catch (error) {
+          logger.error('Error calculating age for authorization:', error)
+          isAuthorized = false
+        }
       }
     } else if (userRole === 'parent') {
-      // Check if parent owns the student
-      const studentDoc = await db.collection('users').doc(booking.studentId).get()
-      const student = studentDoc.data()
-      isAuthorized = student?.parentId === userId
+      // FIXED: Fetch childrenIds from PARENT doc, not parentId from student doc
+      const parentDoc = await db.collection('users').doc(userId).get()
+      const parentData = parentDoc.data()
+      isAuthorized = parentData?.childrenIds?.includes(booking.studentId) || false
     }
 
     if (!isAuthorized) {
@@ -752,14 +839,20 @@ router.post('/:id/decline-reschedule', authenticate, async (req: AuthRequest, re
       const studentDoc = await db.collection('users').doc(userId).get()
       const studentData = studentDoc.data()
       if (studentData?.dateOfBirth) {
-        const age = calculateAge(studentData.dateOfBirth.toDate())
-        isAuthorized = age >= 18
+        try {
+          const birthDate = studentData.dateOfBirth.toDate?.() || new Date(studentData.dateOfBirth)
+          const age = calculateAge(birthDate)
+          isAuthorized = !isNaN(age) && age >= 0 && age >= 18
+        } catch (error) {
+          logger.error('Error calculating age for authorization:', error)
+          isAuthorized = false
+        }
       }
     } else if (userRole === 'parent') {
-      // Check if parent owns the student
-      const studentDoc = await db.collection('users').doc(booking.studentId).get()
-      const student = studentDoc.data()
-      isAuthorized = student?.parentId === userId
+      // FIXED: Fetch childrenIds from PARENT doc, not parentId from student doc
+      const parentDoc = await db.collection('users').doc(userId).get()
+      const parentData = parentDoc.data()
+      isAuthorized = parentData?.childrenIds?.includes(booking.studentId) || false
     }
 
     if (!isAuthorized) {
@@ -819,14 +912,20 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
       const studentDoc = await db.collection('users').doc(userId).get()
       const studentData = studentDoc.data()
       if (studentData?.dateOfBirth) {
-        const age = calculateAge(studentData.dateOfBirth.toDate())
-        isAuthorized = age >= 18
+        try {
+          const birthDate = studentData.dateOfBirth.toDate?.() || new Date(studentData.dateOfBirth)
+          const age = calculateAge(birthDate)
+          isAuthorized = !isNaN(age) && age >= 0 && age >= 18
+        } catch (error) {
+          logger.error('Error calculating age for authorization:', error)
+          isAuthorized = false
+        }
       }
     } else if (userRole === 'parent') {
-      // Check if parent owns the student
-      const studentDoc = await db.collection('users').doc(booking?.studentId).get()
-      const student = studentDoc.data()
-      isAuthorized = student?.parentId === userId
+      // FIXED: Fetch childrenIds from PARENT doc, not parentId from student doc
+      const parentDoc = await db.collection('users').doc(userId).get()
+      const parentData = parentDoc.data()
+      isAuthorized = parentData?.childrenIds?.includes(booking?.studentId) || false
     }
 
     if (!isAuthorized) {
@@ -865,53 +964,94 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
 
     // Handle payment cancellation/refund
     let refundId = null
+    let paymentCancellationSkipped = false
+
     if (booking?.paymentIntentId) {
-      try {
-        // Check if payment was captured (charged) or just authorized (held)
-        if (!booking?.paymentCapturedAt) {
-          // Authorization exists but not captured → Cancel authorization (no charge, no fees)
-          logger.info('🔓 [CANCEL] Releasing authorization (no charge)', {
-            bookingId,
-            paymentIntentId: booking.paymentIntentId,
-          })
+      // Validate payment intent ID before attempting to cancel/refund
+      const isValidPaymentIntentId = booking.paymentIntentId.startsWith('pi_')
 
-          await stripe.paymentIntents.cancel(booking.paymentIntentId)
-
-          logger.info('✅ [CANCEL] Authorization released successfully - no charge to customer', {
-            bookingId,
-            paymentIntentId: booking.paymentIntentId,
-          })
-        } else {
-          // Payment already captured → Process refund (standard Stripe fees apply)
-          logger.info('💸 [CANCEL] Payment was captured, processing refund', {
-            bookingId,
-            paymentIntentId: booking.paymentIntentId,
-          })
-
-          const refund = await stripe.refunds.create({
-            payment_intent: booking.paymentIntentId,
-            reason: 'requested_by_customer',
-            metadata: {
-              bookingId,
-              cancelledBy: userId,
-            },
-          })
-          refundId = refund.id
-
-          logger.info('✅ [CANCEL] Refund processed (Stripe fees: 40p total)', {
-            bookingId,
-            paymentIntentId: booking.paymentIntentId,
-            refundId,
-            amount: refund.amount,
-          })
-        }
-      } catch (error: any) {
-        logger.error('❌ [CANCEL] Failed to cancel payment/authorization', {
+      if (!isValidPaymentIntentId) {
+        logger.warn('⚠️ [CANCEL] Booking has invalid payment intent ID, skipping Stripe cancellation', {
           bookingId,
-          error: error.message,
-          paymentIntentId: booking.paymentIntentId,
+          invalidPaymentIntentId: booking.paymentIntentId,
+          isPaid: booking.isPaid,
+          status: booking.status,
         })
-        throw new ApiError('Failed to process payment cancellation. Please contact support.', 500)
+        paymentCancellationSkipped = true
+
+        // If booking is marked as paid with invalid ID, this is a data inconsistency
+        if (booking.isPaid) {
+          logger.error('🚨 [CANCEL] DATA INCONSISTENCY: Booking marked as paid with invalid payment intent ID', {
+            bookingId,
+            invalidPaymentIntentId: booking.paymentIntentId,
+            studentId: booking.studentId,
+            tutorId: booking.tutorId,
+            price: booking.price,
+            timestamp: new Date().toISOString(),
+          })
+          // TODO: Alert admin - possible payment not properly processed
+        }
+      } else {
+        try {
+          // Valid payment intent ID - attempt to cancel/refund via Stripe
+          if (!booking?.paymentCapturedAt) {
+            // Authorization exists but not captured → Cancel authorization (no charge, no fees)
+            logger.info('🔓 [CANCEL] Releasing authorization (no charge)', {
+              bookingId,
+              paymentIntentId: booking.paymentIntentId,
+            })
+
+            await stripe.paymentIntents.cancel(booking.paymentIntentId)
+
+            logger.info('✅ [CANCEL] Authorization released successfully - no charge to customer', {
+              bookingId,
+              paymentIntentId: booking.paymentIntentId,
+            })
+          } else {
+            // Payment already captured → Process refund (standard Stripe fees apply)
+            logger.info('💸 [CANCEL] Payment was captured, processing refund', {
+              bookingId,
+              paymentIntentId: booking.paymentIntentId,
+            })
+
+            const refund = await stripe.refunds.create({
+              payment_intent: booking.paymentIntentId,
+              reason: 'requested_by_customer',
+              metadata: {
+                bookingId,
+                cancelledBy: userId,
+              },
+            })
+            refundId = refund.id
+
+            logger.info('✅ [CANCEL] Refund processed (Stripe fees: 40p total)', {
+              bookingId,
+              paymentIntentId: booking.paymentIntentId,
+              refundId,
+              amount: refund.amount,
+            })
+          }
+        } catch (error: any) {
+          logger.error('❌ [CANCEL] Failed to cancel payment/authorization', {
+            bookingId,
+            error: error.message,
+            errorType: error.type,
+            errorCode: error.code,
+            paymentIntentId: booking.paymentIntentId,
+          })
+
+          // Check if this is a "no such payment intent" error (invalid ID that passed format check)
+          if (error.code === 'resource_missing' || error.type === 'invalid_request_error') {
+            logger.warn('⚠️ [CANCEL] Payment intent not found in Stripe, treating as invalid ID', {
+              bookingId,
+              paymentIntentId: booking.paymentIntentId,
+            })
+            paymentCancellationSkipped = true
+            // Continue with cancellation without throwing error
+          } else {
+            throw new ApiError('Failed to process payment cancellation. Please contact support.', 500)
+          }
+        }
       }
     }
 
@@ -946,12 +1086,40 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
       // });
     }
 
+    // Delete Teams meeting if it exists
+    if (booking?.teamsMeetingId) {
+      try {
+        logger.info('🗑️ [CANCEL] Deleting Teams meeting', {
+          bookingId,
+          teamsMeetingId: booking.teamsMeetingId,
+        })
+
+        await teamsService.deleteTeamsMeeting(booking.teamsMeetingId)
+
+        logger.info('✅ [CANCEL] Teams meeting deleted successfully', {
+          bookingId,
+          teamsMeetingId: booking.teamsMeetingId,
+        })
+      } catch (error: any) {
+        // Log error but don't block cancellation
+        logger.error('❌ [CANCEL] Failed to delete Teams meeting (continuing with cancellation)', {
+          bookingId,
+          teamsMeetingId: booking.teamsMeetingId,
+          error: error.message,
+          errorType: error.constructor.name,
+        })
+        // Continue with cancellation even if meeting deletion fails
+      }
+    }
+
     // Update booking
     const updateData: any = {
       status: 'cancelled',
       cancelledBy: userId,
       cancelledAt: FieldValue.serverTimestamp(),
       cancellationReason: reason || 'No reason provided',
+      meetingLink: null, // Clear meeting link
+      teamsMeetingId: null, // Clear Teams meeting ID
       updatedAt: FieldValue.serverTimestamp(),
     }
 
@@ -961,11 +1129,28 @@ router.post('/:id/cancel', authenticate, async (req: AuthRequest, res, next) => 
       updateData.refundedAt = FieldValue.serverTimestamp()
     }
 
+    // Track if payment cancellation was skipped due to invalid ID
+    if (paymentCancellationSkipped) {
+      updateData.paymentCancellationSkipped = true
+      updateData.paymentCancellationSkipReason = 'Invalid or placeholder payment intent ID'
+    }
+
     await db.collection('bookings').doc(bookingId).update(updateData)
 
+    // Return appropriate message based on what happened
+    let message = 'Booking cancelled successfully'
+    if (paymentCancellationSkipped && booking?.isPaid) {
+      message = 'Booking cancelled. Payment refund could not be processed automatically - please contact support.'
+    } else if (refundId) {
+      message = 'Booking cancelled and payment refunded successfully'
+    } else if (paymentCancellationSkipped) {
+      message = 'Booking cancelled successfully (no payment to refund)'
+    }
+
     res.json({
-      message: 'Booking cancelled successfully',
+      message,
       refunded: !!refundId,
+      paymentCancellationSkipped,
     })
   } catch (error) {
     next(error)

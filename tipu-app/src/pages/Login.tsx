@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { UserRole } from '@/types/user';
@@ -37,17 +38,32 @@ const getAuthErrorMessage = (errorCode: string): string => {
 
 const Login = () => {
   const navigate = useNavigate();
-  const { refreshProfile } = useAuth();
+  const { user, loading, refreshProfile } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [staySignedIn, setStaySignedIn] = useState(true);
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema)
   });
 
+  // Auto-redirect if user is already authenticated
+  useEffect(() => {
+    if (!loading && user) {
+      const dashboardMap: Record<UserRole, string> = {
+        student: '/dashboard/student',
+        tutor: '/dashboard/tutor',
+        parent: '/dashboard/parent',
+        admin: '/dashboard/admin'
+      };
+
+      navigate(dashboardMap[user.role], { replace: true });
+    }
+  }, [loading, user, navigate]);
+
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     try {
-      await signInWithEmail(data.email, data.password);
+      await signInWithEmail(data.email, data.password, staySignedIn);
       await refreshProfile();
       
       // Get user to determine redirect
@@ -121,15 +137,33 @@ const Login = () => {
                 <p className="text-sm text-destructive">{errors.password.message}</p>
               )}
             </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="staySignedIn"
+                checked={staySignedIn}
+                onCheckedChange={(checked) => setStaySignedIn(checked as boolean)}
+              />
+              <Label
+                htmlFor="staySignedIn"
+                className="text-sm font-medium leading-none cursor-pointer"
+              >
+                Stay signed in
+              </Label>
+            </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? 'Logging in...' : 'Login'}
             </Button>
             <div className="text-sm text-center space-y-2">
-              <Link to="/register" className="text-primary hover:underline">
-                Don't have an account? Register
+              <Link to="/forgot-password" className="text-primary hover:underline">
+                Forgot your password?
               </Link>
+              <div>
+                <Link to="/register" className="text-primary hover:underline">
+                  Don't have an account? Register
+                </Link>
+              </div>
             </div>
           </CardFooter>
         </form>

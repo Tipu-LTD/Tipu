@@ -6,16 +6,17 @@ import { logger } from '../config/logger'
 import { Request, Response } from 'express'
 import { db } from '../config/firebase'
 import { FieldValue } from 'firebase-admin/firestore'
+import { createPaymentIntentSchema } from '../schemas/payment.schema'
 
 const router = Router()
 
-// In-memory cache for processed payment intents (prevents duplicate processing)
-// In production, consider using Redis for distributed systems
-const processedPayments = new Set<string>()
+// Payment idempotency is now handled using Firestore transactions
+// in the webhook handler below (processed_payments collection)
 
 router.post('/create-intent', authenticate, async (req: AuthRequest, res, next) => {
   try {
-    const { bookingId, amount, currency } = req.body
+    // Validate input
+    const { bookingId, amount, currency } = createPaymentIntentSchema.parse(req.body)
 
     const result = await paymentService.createPaymentIntent({
       bookingId,
@@ -300,24 +301,45 @@ router.post(
           const paymentIntentId = paymentIntent.id
           const { bookingId } = paymentIntent.metadata
 
-          // Check if payment already processed (idempotency)
-          if (processedPayments.has(paymentIntentId)) {
-            logger.info(`Payment ${paymentIntentId} already processed (idempotent), skipping`)
-            return res.sendStatus(200)
+          // Atomic idempotency check using Firestore transaction
+          const processedRef = db.collection('processed_payments').doc(paymentIntentId)
+
+          try {
+            let alreadyProcessed = false
+
+            await db.runTransaction(async (transaction) => {
+              const doc = await transaction.get(processedRef)
+
+              if (doc.exists) {
+                logger.info(`Payment ${paymentIntentId} already processed (idempotent), skipping`)
+                alreadyProcessed = true
+                return
+              }
+
+              // Mark as processed FIRST (atomic operation)
+              transaction.set(processedRef, {
+                paymentIntentId,
+                bookingId,
+                processedAt: FieldValue.serverTimestamp(),
+                // TTL: Document will be auto-deleted after 30 days (configure in Firebase Console)
+                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+              })
+            })
+
+            // If already processed, return early
+            if (alreadyProcessed) {
+              return res.sendStatus(200)
+            }
+
+            // Process payment (outside transaction to avoid timeout)
+            await paymentService.confirmPayment(bookingId, paymentIntentId)
+            logger.info(`Payment succeeded and confirmed for booking ${bookingId}`)
+
+          } catch (error) {
+            logger.error('Payment processing error:', error)
+            // Note: Payment intent is marked as processed in Firestore, so retry won't double-charge
+            throw error
           }
-
-          // Process payment
-          await paymentService.confirmPayment(bookingId, paymentIntentId)
-          logger.info(`Payment succeeded for booking ${bookingId}`)
-
-          // Mark as processed
-          processedPayments.add(paymentIntentId)
-
-          // Clean up after 24 hours to prevent memory growth
-          setTimeout(() => {
-            processedPayments.delete(paymentIntentId)
-            logger.debug(`Removed processed payment ${paymentIntentId} from cache`)
-          }, 24 * 60 * 60 * 1000)
           break
 
         case 'payment_intent.payment_failed':

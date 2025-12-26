@@ -1,5 +1,6 @@
 import { PublicNavbar } from '@/components/landing/PublicNavbar';
 import { Footer } from '@/components/landing/Footer';
+import { PageHero } from '@/components/landing/PageHero';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useNavigate } from 'react-router-dom';
@@ -59,35 +60,22 @@ export default function OurTutors() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen">
       <PublicNavbar />
       
       {/* Hero Section */}
-      <section className="relative py-20 md:py-32 px-4 overflow-hidden">
-        <div className="absolute inset-0 -z-10">
-          <img 
-            src="https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=1920&h=1080&fit=crop"
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover opacity-40"
-          />
-        </div>
-        <div className="container mx-auto max-w-4xl text-center">
-          <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
-            <Users className="h-4 w-4" />
-            Our Team
-          </span>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
+      <PageHero
+        badge={{ icon: Users, text: 'Our Team' }}
+        title={
+          <>
             Meet Our <span className="text-primary">Tutors</span>
-          </h1>
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
-            University students who've excelled in their subjects and are passionate 
-            about helping others succeed.
-          </p>
-        </div>
-      </section>
+          </>
+        }
+        description="University students who've excelled in their subjects and are passionate about helping others succeed."
+      />
 
       {/* Benefits Grid */}
-      <section className="py-12 px-4 bg-muted/30">
+      <section className="py-16 md:py-24 px-4 bg-muted/30">
         <div className="container mx-auto max-w-6xl">
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {benefits.map((benefit) => (
