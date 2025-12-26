@@ -50,7 +50,7 @@ export const createBooking = async (input: CreateBookingInput): Promise<Booking>
 
     // Payment authorization tracking
     paymentAuthType,
-    paymentScheduledFor: paymentScheduledFor ? Timestamp.fromDate(paymentScheduledFor) : undefined,  // Convert Date to Timestamp
+    ...(paymentScheduledFor && { paymentScheduledFor: Timestamp.fromDate(paymentScheduledFor) }),  // Only include if exists
     requiresAuthCreation,
     paymentAttempted: false,
     paymentRetryCount: 0,
