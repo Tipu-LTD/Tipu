@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { ArrowLeft, Calendar, Clock, User, BookOpen, Link as LinkIcon, FileText } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, User, BookOpen, FileText } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { penceToPounds } from '@/utils/currency';
 import { parseFirestoreDate } from '@/utils/date';
 import { BookingStatus } from '@/types/booking';
+import { RescheduleDialog } from '@/components/bookings/RescheduleDialog';
+import { CancelDialog } from '@/components/bookings/CancelDialog';
 
 const statusColors: Record<BookingStatus, string> = {
   pending: 'bg-yellow-500',
@@ -28,6 +31,8 @@ export default function BookingDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   const { data: booking, isLoading } = useQuery({
     queryKey: ['booking', id],
@@ -46,6 +51,9 @@ export default function BookingDetails() {
     queryFn: () => usersApi.getById(booking!.studentId),
     enabled: !!booking?.studentId
   });
+
+  // Check if lesson is in the past
+  const isPastLesson = booking ? parseFirestoreDate(booking.scheduledAt) < new Date() : false;
 
   if (isLoading) {
     return (
@@ -110,7 +118,12 @@ export default function BookingDetails() {
                 <Calendar className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm text-muted-foreground">Date</p>
-                  <p className="font-medium">{format(parseFirestoreDate(booking.scheduledAt), 'PPPP')}</p>
+                  <p className="font-medium">
+                    {booking.scheduledAt
+                      ? format(parseFirestoreDate(booking.scheduledAt), 'PPPP')
+                      : 'Date not set'
+                    }
+                  </p>
                 </div>
               </div>
 
@@ -121,7 +134,10 @@ export default function BookingDetails() {
                 <div>
                   <p className="text-sm text-muted-foreground">Time & Duration</p>
                   <p className="font-medium">
-                    {format(parseFirestoreDate(booking.scheduledAt), 'p')} ({booking.duration}h)
+                    {booking.scheduledAt
+                      ? `${format(parseFirestoreDate(booking.scheduledAt), 'p')} (${booking.duration}h)`
+                      : `Duration: ${booking.duration}h (time not set)`
+                    }
                   </p>
                 </div>
               </div>
@@ -172,23 +188,6 @@ export default function BookingDetails() {
             </CardContent>
           </Card>
 
-          {/* Meeting Link */}
-          {booking.meetingLink && booking.status === 'confirmed' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Meeting Link</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Button className="w-full" asChild>
-                  <a href={booking.meetingLink} target="_blank" rel="noopener noreferrer">
-                    <LinkIcon className="h-4 w-4 mr-2" />
-                    Join Meeting
-                  </a>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Lesson Report */}
           {booking.lessonReport && (
             <Card>
@@ -228,7 +227,46 @@ export default function BookingDetails() {
             </Card>
           )}
         </div>
+
+        {/* Actions */}
+        {(booking.status === 'pending' || booking.status === 'accepted' || booking.status === 'confirmed') && !isPastLesson && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => setRescheduleOpen(true)}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Reschedule Lesson
+                </Button>
+                <Button
+                  onClick={() => setCancelOpen(true)}
+                  variant="destructive"
+                  className="flex-1"
+                >
+                  Cancel Lesson
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
+
+      {/* Dialogs */}
+      <RescheduleDialog
+        open={rescheduleOpen}
+        onOpenChange={setRescheduleOpen}
+        booking={booking}
+      />
+      <CancelDialog
+        open={cancelOpen}
+        onOpenChange={setCancelOpen}
+        booking={booking}
+      />
     </DashboardLayout>
   );
 }

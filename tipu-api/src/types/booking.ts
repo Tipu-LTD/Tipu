@@ -1,13 +1,23 @@
 import { Timestamp } from 'firebase-admin/firestore'
 import { Subject, Level } from './user'
 
-export type BookingStatus = 'pending' | 'accepted' | 'confirmed' | 'completed' | 'cancelled' | 'declined'
+export type BookingStatus = 'pending' | 'accepted' | 'confirmed' | 'completed' | 'cancelled' | 'declined' | 'tutor-suggested'
 
 export interface LessonReport {
   topicsCovered: string
   homework?: string
   notes?: string
   completedAt: Timestamp
+}
+
+export interface RescheduleRequest {
+  requestedBy: string        // UID of user who requested
+  requestedAt: Timestamp
+  newScheduledAt: Timestamp  // Proposed new lesson time
+  status: 'pending' | 'approved' | 'declined'
+  respondedBy?: string       // UID of user who approved/declined
+  respondedAt?: Timestamp
+  declineReason?: string
 }
 
 export interface Booking {
@@ -23,9 +33,58 @@ export interface Booking {
   isPaid: boolean
   paymentIntentId?: string
   meetingLink?: string
+  teamsMeetingId?: string
   recordingUrl?: string
   lessonReport?: LessonReport
   declineReason?: string
+
+  // Tutor-initiated booking fields
+  initiatedBy?: 'student' | 'parent' | 'tutor'
+  suggestedAt?: Timestamp
+  approvedBy?: string  // Parent UID who approved (or student UID for adult students)
+  approvedAt?: Timestamp
+  tutorNotes?: string  // Notes from tutor when suggesting
+  requiresParentApproval?: boolean  // True if student <18, false if student ≥18
+
+  // Reschedule request tracking
+  rescheduleRequest?: RescheduleRequest  // Pending reschedule request
+
+  // Reschedule tracking (for completed reschedules)
+  rescheduledBy?: string  // User UID who rescheduled
+  rescheduledAt?: Timestamp
+
+  // Cancellation tracking
+  cancelledBy?: string  // User UID who cancelled
+  cancelledAt?: Timestamp
+  cancellationReason?: string
+  refundId?: string  // Stripe refund ID if applicable
+
+  // Deferred payment tracking
+  paymentScheduledFor?: Timestamp  // When payment should be taken (24h before lesson)
+  paymentAttempted?: boolean        // Has payment been attempted (idempotency)
+  paymentAttemptedAt?: Timestamp    // When payment was attempted
+  paymentError?: string             // User-facing error message if payment failed
+  paymentRetryCount?: number        // Number of retry attempts (max 3)
+  lastPaymentRetryAt?: Timestamp    // Last retry timestamp
+
+  // Payment authorization tracking (manual capture flow)
+  paymentAuthType?: 'immediate_auth' | 'deferred_auth' | 'immediate_charge'
+  // immediate_auth: <7 days away, authorize at booking time
+  // deferred_auth: ≥7 days away, save card now, authorize 7 days before
+  // immediate_charge: <24h away, charge immediately (existing flow)
+  paymentIntentCreatedAt?: Timestamp  // When PaymentIntent was created
+  paymentCapturedAt?: Timestamp       // When payment was captured (charged)
+  authorizationExpiresAt?: Timestamp  // 7 days from PI creation (Stripe limit)
+  savedPaymentMethodId?: string       // For deferred auth flow (saved card)
+  setupIntentId?: string              // SetupIntent ID for deferred auth
+  requiresAuthCreation?: boolean      // Flag for cron: needs PI creation 7 days before
+  refundedAt?: Timestamp              // When refund was processed
+
+  // Notification tracking
+  paymentReminderSent?: boolean     // 48h reminder sent
+  paymentDueSoonSent?: boolean      // 24h reminder sent
+  paymentFailureNotificationSent?: boolean  // Failure notification sent
+
   createdAt: Timestamp
   updatedAt: Timestamp
 }
@@ -54,7 +113,36 @@ export interface DeclineBookingInput {
 
 export interface SubmitLessonReportInput {
   bookingId: string
+  tutorId: string  // Required for authorization
   topicsCovered: string
   homework?: string
   notes?: string
+}
+
+export interface SuggestLessonInput {
+  studentId: string
+  subject: Subject
+  level: Level
+  scheduledAt: Date
+  duration?: number
+  notes?: string  // Optional notes for parent
+}
+
+export interface ApproveSuggestionInput {
+  bookingId: string
+  parentId: string
+}
+
+export interface RescheduleBookingInput {
+  bookingId: string
+  userId: string
+  userRole: string
+  newScheduledAt: Date
+}
+
+export interface CancelBookingInput {
+  bookingId: string
+  userId: string
+  userRole: string
+  reason?: string
 }

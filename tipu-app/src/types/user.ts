@@ -15,6 +15,8 @@ export interface User {
   dateOfBirth?: Date;
   parentId?: string;
   schoolId?: string;
+  enrolledSubjects?: Subject[];
+  examBoards?: Record<string, string>; // e.g., {maths: 'AQA', physics: 'Edexcel'}
 
   // Tutor fields
   bio?: string;

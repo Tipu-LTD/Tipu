@@ -34,6 +34,14 @@ export interface LessonReportData {
   notes?: string;
 }
 
+export interface RescheduleBookingData {
+  newScheduledAt: string; // ISO datetime string
+}
+
+export interface CancelBookingData {
+  reason?: string;
+}
+
 export const bookingsApi = {
   create: (data: CreateBookingData) =>
     apiRequest<Booking>('/v1/bookings', {
@@ -72,8 +80,66 @@ export const bookingsApi = {
       body: JSON.stringify(data)
     }),
 
-  confirmPayment: (id: string) =>
+  confirmPayment: (id: string, paymentIntentId: string) =>
     apiRequest<{ message: string }>(`/v1/bookings/${id}/confirm-payment`, {
-      method: 'PATCH'
+      method: 'PATCH',
+      body: JSON.stringify({ paymentIntentId })
+    }),
+
+  /**
+   * Manually generate Teams meeting link for a booking
+   * POST /api/v1/bookings/:id/generate-meeting
+   */
+  generateMeeting: (id: string) =>
+    apiRequest<Booking>(`/v1/bookings/${id}/generate-meeting`, {
+      method: 'POST'
+    }),
+
+  requestReschedule: (id: string, data: RescheduleBookingData) =>
+    apiRequest<{ message: string }>(`/v1/bookings/${id}/request-reschedule`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  approveReschedule: (id: string) =>
+    apiRequest<{ message: string; newScheduledAt: Date }>(`/v1/bookings/${id}/approve-reschedule`, {
+      method: 'POST'
+    }),
+
+  declineReschedule: (id: string, reason?: string) =>
+    apiRequest<{ message: string }>(`/v1/bookings/${id}/decline-reschedule`, {
+      method: 'POST',
+      body: JSON.stringify({ reason })
+    }),
+
+  cancel: (id: string, data: CancelBookingData) =>
+    apiRequest<{ message: string; refunded: boolean }>(`/v1/bookings/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+
+  /**
+   * Approve a tutor-suggested lesson (parent accepts the suggestion)
+   * POST /api/v1/bookings/:id/approve-suggestion
+   */
+  approveSuggestion: (id: string) =>
+    apiRequest<{ message: string }>(`/v1/bookings/${id}/approve-suggestion`, {
+      method: 'POST'
+    }),
+
+  /**
+   * Decline a tutor-suggested lesson (parent rejects the suggestion)
+   * POST /api/v1/bookings/:id/decline-suggestion
+   */
+  declineSuggestion: (id: string, reason?: string) =>
+    apiRequest<{ message: string }>(`/v1/bookings/${id}/decline-suggestion`, {
+      method: 'POST',
+      body: JSON.stringify({ reason })
     })
+};
+
+// Convenience helper functions for easier imports
+export const getBookings = async (params?: { status?: string; limit?: number; offset?: number }) => {
+  const response = await bookingsApi.getAll(params);
+  return response.bookings;
 };

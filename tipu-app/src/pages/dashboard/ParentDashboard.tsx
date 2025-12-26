@@ -1,23 +1,48 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { bookingsApi } from '@/lib/api/bookings';
 import { usersApi } from '@/lib/api/users';
+import { paymentsApi } from '@/lib/api/payments';
 import { parseFirestoreDate } from '@/utils/date';
 import { penceToPounds } from '@/utils/currency';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { BookingCard } from '@/components/bookings/BookingCard';
+import { TutorSuggestionCard } from '@/components/bookings/TutorSuggestionCard';
+import { PaymentForm } from '@/components/bookings/PaymentForm';
+import { AuthorizationForm } from '@/components/bookings/AuthorizationForm';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Users, Calendar, CreditCard, ClipboardList, BookOpen } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Users, Calendar, CreditCard, ClipboardList, BookOpen, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { loadStripe } from '@stripe/stripe-js';
+import { Booking } from '@/types/booking';
 
 const ParentDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
+
+  // Payment state
+  const [paymentBooking, setPaymentBooking] = useState<Booking | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentSecret, setPaymentSecret] = useState<string | null>(null);
+  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+
+  // Authorization state
+  const [authBooking, setAuthBooking] = useState<Booking | null>(null);
+  const [authSecret, setAuthSecret] = useState<string | null>(null);
+  const [isDeferred, setIsDeferred] = useState(false);
+  const [stripePromise, setStripePromise] = useState<Promise<any> | null>(null);
+
+  // Race condition prevention
+  const [recentlyPaidBookingIds, setRecentlyPaidBookingIds] = useState<Set<string>>(new Set());
 
   // Fetch children data
   const { data: childrenData, isLoading: childrenLoading } = useQuery({
@@ -54,6 +79,37 @@ const ParentDashboard = () => {
     enabled: bookings.length > 0
   });
 
+  // Mutations for approving/declining tutor suggestions
+  const approveSuggestionMutation = useMutation({
+    mutationFn: (bookingId: string) => bookingsApi.approveSuggestion(bookingId),
+    onSuccess: () => {
+      toast.success('Lesson approved! You can now proceed with payment.');
+      queryClient.invalidateQueries({ queryKey: ['parent-bookings'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to approve lesson suggestion');
+    }
+  });
+
+  const declineSuggestionMutation = useMutation({
+    mutationFn: (bookingId: string) => bookingsApi.declineSuggestion(bookingId),
+    onSuccess: () => {
+      toast.success('Lesson suggestion declined');
+      queryClient.invalidateQueries({ queryKey: ['parent-bookings'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to decline lesson suggestion');
+    }
+  });
+
+  const handleApproveSuggestion = (bookingId: string) => {
+    approveSuggestionMutation.mutate(bookingId);
+  };
+
+  const handleDeclineSuggestion = (bookingId: string) => {
+    declineSuggestionMutation.mutate(bookingId);
+  };
+
   // Filter bookings by selected child
   const filteredBookings = selectedChildId
     ? bookings.filter(b => b.studentId === selectedChildId)
@@ -61,7 +117,7 @@ const ParentDashboard = () => {
 
   // Calculate stats
   const activeBookings = filteredBookings.filter(b =>
-    (b.status === 'pending' || b.status === 'confirmed') &&
+    (b.status === 'pending' || b.status === 'confirmed' || b.status === 'tutor-suggested') &&
     parseFirestoreDate(b.scheduledAt) >= new Date()
   );
 
@@ -75,14 +131,16 @@ const ParentDashboard = () => {
     })
     .reduce((sum, b) => sum + b.price, 0);
 
-  const pendingRequests = filteredBookings.filter(b =>
-    b.status === 'pending' &&
+  // Tutor-suggested bookings requiring parent approval
+  const tutorSuggestedBookings = filteredBookings.filter(b =>
+    b.status === 'tutor-suggested' &&
+    b.requiresParentApproval === true &&
     parseFirestoreDate(b.scheduledAt) >= new Date()
   );
 
   const upcomingLessons = filteredBookings
     .filter(b =>
-      b.status === 'confirmed' &&
+      (b.status === 'pending' || b.status === 'accepted' || b.status === 'confirmed') &&
       parseFirestoreDate(b.scheduledAt) >= new Date()
     )
     .sort((a, b) =>
@@ -109,6 +167,120 @@ const ParentDashboard = () => {
       icon: CreditCard,
     },
   ];
+
+  // Payment handlers
+  const handlePayNow = async (booking: Booking) => {
+    setIsCreatingPayment(true);
+    try {
+      const paymentIntent = await paymentsApi.createIntent({
+        bookingId: booking.id,
+        amount: booking.price,
+        currency: 'gbp'
+      });
+
+      setPaymentSecret(paymentIntent.clientSecret);
+      setPaymentBooking(booking);
+      setShowPaymentModal(true);
+    } catch (error: any) {
+      toast.error('Failed to initialize payment. Please try again.');
+    } finally {
+      setIsCreatingPayment(false);
+    }
+  };
+
+  const handleAuthorize = async (booking: Booking) => {
+    const scheduledAt = parseFirestoreDate(booking.scheduledAt);
+    const daysUntilLesson = (scheduledAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    const isDeferred = daysUntilLesson >= 7;
+
+    setAuthBooking(booking);
+    setIsDeferred(isDeferred);
+    setIsCreatingPayment(true);
+
+    try {
+      let clientSecret: string;
+
+      if (isDeferred) {
+        const setupIntent = await paymentsApi.createSetupIntent({ bookingId: booking.id });
+        clientSecret = setupIntent.clientSecret;
+      } else {
+        const paymentIntent = await paymentsApi.createAuthorization({
+          bookingId: booking.id,
+          amount: booking.price,
+          currency: 'gbp'
+        });
+        clientSecret = paymentIntent.clientSecret;
+      }
+
+      setAuthSecret(clientSecret);
+
+      const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+      if (!publishableKey) {
+        throw new Error('Stripe publishable key not configured');
+      }
+      const stripe = loadStripe(publishableKey);
+      setStripePromise(stripe);
+    } catch (error: any) {
+      toast.error('Failed to initialize payment authorization. Please try again.');
+      setAuthBooking(null);
+      setAuthSecret(null);
+    } finally {
+      setIsCreatingPayment(false);
+    }
+  };
+
+  const handlePaymentClick = (booking: Booking) => {
+    if (booking.paymentAuthType === 'immediate_charge') {
+      handlePayNow(booking);
+    } else {
+      handleAuthorize(booking);
+    }
+  };
+
+  const handlePaymentSuccess = () => {
+    setShowPaymentModal(false);
+    setPaymentBooking(null);
+    setPaymentSecret(null);
+
+    if (paymentBooking) {
+      setRecentlyPaidBookingIds(prev => new Set(prev).add(paymentBooking.id));
+      setTimeout(() => {
+        setRecentlyPaidBookingIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(paymentBooking.id);
+          return newSet;
+        });
+      }, 5000);
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['parent-bookings'] });
+    toast.success('Payment successful! Your lesson is confirmed.');
+  };
+
+  const handleAuthSuccess = async () => {
+    if (!authBooking) return;
+
+    setAuthBooking(null);
+    setAuthSecret(null);
+    setStripePromise(null);
+
+    setRecentlyPaidBookingIds(prev => new Set(prev).add(authBooking.id));
+    setTimeout(() => {
+      setRecentlyPaidBookingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(authBooking.id);
+        return newSet;
+      });
+    }, 5000);
+
+    queryClient.invalidateQueries({ queryKey: ['parent-bookings'] });
+
+    if (isDeferred) {
+      toast.success('Payment method saved successfully! You will be charged on the scheduled date.');
+    } else {
+      toast.success('Payment authorized successfully! Your lesson is confirmed.');
+    }
+  };
 
   // Loading state
   if (childrenLoading) {
@@ -259,21 +431,21 @@ const ParentDashboard = () => {
           </Card>
         )}
 
-        {/* Pending Requests Section */}
-        {pendingRequests.length > 0 && (
-          <Card className="border-yellow-200 bg-yellow-50/50">
+        {/* Tutor Lesson Suggestions */}
+        {tutorSuggestedBookings.length > 0 && (
+          <Card className="border-blue-200 bg-blue-50/50">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <ClipboardList className="h-5 w-5" />
-                Pending Booking Requests
+                <AlertCircle className="h-5 w-5" />
+                Lesson Suggestions from Tutors
                 {selectedChild && <span className="text-sm font-normal text-muted-foreground">for {selectedChild.displayName}</span>}
               </CardTitle>
               <CardDescription>
-                Awaiting tutor approval
+                Your child's tutor has suggested the following lessons. Please review and approve to proceed with payment.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {pendingRequests.map(booking => {
+              {tutorSuggestedBookings.map((booking) => {
                 const tutor = tutorsData?.[booking.tutorId];
                 const child = children.find(c => c.uid === booking.studentId);
                 return (
@@ -283,11 +455,12 @@ const ParentDashboard = () => {
                         For: {child?.displayName}
                       </p>
                     )}
-                    <BookingCard
+                    <TutorSuggestionCard
                       booking={booking}
-                      tutorName={tutor?.displayName}
-                      tutorPhoto={tutor?.photoURL}
-                      onViewDetails={(id) => navigate(`/bookings/${id}`)}
+                      onApprove={() => handleApproveSuggestion(booking.id)}
+                      onDecline={() => handleDeclineSuggestion(booking.id)}
+                      isApproving={approveSuggestionMutation.isPending}
+                      isDeclining={declineSuggestionMutation.isPending}
                     />
                   </div>
                 );
@@ -296,8 +469,8 @@ const ParentDashboard = () => {
           </Card>
         )}
 
-        {/* Upcoming Lessons Section */}
-        <Card className={upcomingLessons.length > 0 ? "border-green-200 bg-green-50/50" : ""}>
+        {/* Upcoming Lessons Section - All future bookings (pending, accepted, confirmed) */}
+        <Card className={upcomingLessons.length > 0 ? "border-blue-200 bg-blue-50/50" : ""}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
@@ -305,7 +478,7 @@ const ParentDashboard = () => {
               {selectedChild && <span className="text-sm font-normal text-muted-foreground">for {selectedChild.displayName}</span>}
             </CardTitle>
             <CardDescription>
-              Confirmed bookings
+              All scheduled lessons
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -345,6 +518,8 @@ const ParentDashboard = () => {
                         tutorName={tutor?.displayName}
                         tutorPhoto={tutor?.photoURL}
                         onViewDetails={(id) => navigate(`/bookings/${id}`)}
+                        onPayNow={handlePaymentClick}
+                        isCreatingPayment={isCreatingPayment}
                       />
                     </div>
                   );
@@ -359,6 +534,49 @@ const ParentDashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Payment Modal */}
+      {paymentBooking && paymentSecret && (
+        <Dialog open={showPaymentModal} onOpenChange={setShowPaymentModal}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Complete Payment</DialogTitle>
+            </DialogHeader>
+            <PaymentForm
+              clientSecret={paymentSecret}
+              amount={paymentBooking.price}
+              onSuccess={handlePaymentSuccess}
+              onBack={() => setShowPaymentModal(false)}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Authorization Modal */}
+      {authBooking && authSecret && stripePromise && (
+        <Dialog
+          open={!!authBooking && !!authSecret}
+          onOpenChange={(open) => {
+            if (!open) {
+              toast.error('Please save your card to continue');
+            }
+          }}
+        >
+          <DialogContent className="max-w-md" hideCloseButton>
+            <DialogHeader>
+              <DialogTitle>
+                {isDeferred ? 'Save Payment Method' : 'Authorize Payment'}
+              </DialogTitle>
+            </DialogHeader>
+            <AuthorizationForm
+              clientSecret={authSecret}
+              isDeferred={isDeferred}
+              stripePromise={stripePromise}
+              onSuccess={handleAuthSuccess}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </DashboardLayout>
   );
 };

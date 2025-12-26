@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { bookingsApi } from '@/lib/api/bookings';
 import { usersApi } from '@/lib/api/users';
-import { parseFirestoreDate } from '@/utils/date';
+import { parseFirestoreDate, formatDuration } from '@/utils/date';
 import { format } from 'date-fns';
 import { penceToPounds } from '@/utils/currency';
 import { Calendar, Clock, User } from 'lucide-react';
@@ -54,7 +54,7 @@ const TutorSchedule = () => {
   }, [bookings]);
 
   const upcomingBookings = bookings.filter(
-    b => (b.status === 'confirmed' || b.status === 'pending') && parseFirestoreDate(b.scheduledAt) >= new Date()
+    b => (b.status === 'confirmed' || b.status === 'accepted' || b.status === 'pending') && parseFirestoreDate(b.scheduledAt) >= new Date()
   );
   const pastBookings = bookings.filter(
     b => b.status === 'completed' || (b.status === 'confirmed' && parseFirestoreDate(b.scheduledAt) < new Date())
@@ -89,10 +89,11 @@ const TutorSchedule = () => {
                   <Badge variant="outline">{booking.level}</Badge>
                   <Badge variant={
                     booking.status === 'confirmed' ? 'default' :
+                    booking.status === 'accepted' ? 'secondary' :
                     booking.status === 'pending' ? 'secondary' :
                     booking.status === 'completed' ? 'default' :
                     'destructive'
-                  }>
+                  } className={booking.status === 'accepted' ? 'bg-green-500' : ''}>
                     {booking.status}
                   </Badge>
                 </div>
@@ -104,7 +105,7 @@ const TutorSchedule = () => {
                   </div>
                   <div className="flex items-center gap-1">
                     <Clock className="h-4 w-4" />
-                    {format(parseFirestoreDate(booking.scheduledAt), 'p')} ({booking.duration}min)
+                    {format(parseFirestoreDate(booking.scheduledAt), 'p')} ({formatDuration(booking.duration)})
                   </div>
                 </div>
                 

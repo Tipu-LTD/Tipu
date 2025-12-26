@@ -35,5 +35,25 @@ export const paymentsApi = {
   createConnectAccount: () =>
     apiRequest<ConnectAccountResponse>('/v1/payments/connect-account', {
       method: 'POST'
-    })
+    }),
+
+  // Create authorization (manual capture) for immediate auth flow (<7 days)
+  createAuthorization: (bookingId: string) =>
+    apiRequest<{ clientSecret: string; paymentIntentId: string; expiresAt: string }>(
+      '/v1/payments/authorize',
+      {
+        method: 'POST',
+        body: JSON.stringify({ bookingId })
+      }
+    ),
+
+  // Create SetupIntent (save card for deferred auth flow ≥7 days)
+  createSetupIntent: (bookingId: string) =>
+    apiRequest<{ clientSecret: string; setupIntentId: string }>(
+      '/v1/payments/setup-intent',
+      {
+        method: 'POST',
+        body: JSON.stringify({ bookingId })
+      }
+    ),
 };

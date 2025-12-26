@@ -1,0 +1,47 @@
+rules_version = '2';
+
+// Firebase Storage Security Rules for Tipu - SIMPLIFIED FOR MVP
+// Covers: tutor resources, student homework uploads, and profile photos
+// Recordings use OneDrive links (no Firebase Storage needed)
+// Messaging uses WhatsApp (no in-app chat attachments)
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Tutor Resources - Lesson recordings, guides, notes
+    // Tutors upload resources for specific students
+    match /tutor-resources/{tutorId}/{studentId}/{filename} {
+      allow write: if isSignedIn() && request.auth.uid == tutorId;  // Tutors upload to their student folders
+      allow read: if isSignedIn();  // All authenticated users can read
+    }
+
+    // Student Homework Uploads
+    // Students upload work to their tutor's folder, both can view
+    match /student-uploads/{tutorId}/{studentId}/{filename} {
+      allow write: if isSignedIn() && request.auth.uid == studentId;  // Students upload to their folder
+      allow read: if isSignedIn() && (request.auth.uid == tutorId || request.auth.uid == studentId);  // Tutor and student can read
+    }
+
+    // Profile Photos
+    // Public read access, only owner can write their own photo
+    match /profile-photos/{userId}/{fileName} {
+      allow read: if true;  // Public access
+      allow write: if isOwner(userId);  // Only owner can update
+    }
+
+    // Default Deny All
+    // Any path not explicitly allowed above is denied
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

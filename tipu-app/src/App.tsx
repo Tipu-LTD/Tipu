@@ -2,20 +2,25 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { ScrollToTop } from "@/components/ScrollToTop";
+import { isAdult } from "@/utils/age";
 import Index from "./pages/Index";
 import About from "./pages/About";
 import OurTutors from "./pages/OurTutors";
 import Contact from "./pages/Contact";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import Tutors from "./pages/Tutors";
 import TutorProfile from "./pages/TutorProfile";
 import DashboardRouter from "./pages/dashboard/DashboardRouter";
 import StudentDashboard from "./pages/dashboard/StudentDashboard";
 import TutorDashboard from "./pages/dashboard/TutorDashboard";
+import TutorStudents from "./pages/dashboard/TutorStudents";
 import ParentDashboard from "./pages/dashboard/ParentDashboard";
 import AdminDashboard from "./pages/dashboard/AdminDashboard";
 import StudentBookings from "./pages/bookings/StudentBookings";
@@ -26,9 +31,26 @@ import BookingConfirmation from "./pages/BookingConfirmation";
 import AddChild from "./pages/children/AddChild";
 import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
+import Lessons from "./pages/lessons/Lessons";
+import SubjectLessons from "./pages/lessons/SubjectLessons";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+// Wrapper component for adult-only student routes
+const AdultStudentRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user } = useAuth();
+
+  if (user?.role === 'student' && user.dateOfBirth) {
+    const adult = isAdult(user.dateOfBirth);
+    if (!adult) {
+      // Minor student trying to access adult-only page -> redirect to lessons
+      return <Navigate to="/lessons" replace />;
+    }
+  }
+
+  return <>{children}</>;
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -37,6 +59,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <ScrollToTop />
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<Index />} />
@@ -45,17 +68,23 @@ const App = () => (
             <Route path="/contact" element={<Contact />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            
-            {/* Tutor Browse */}
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+
+            {/* Tutor Browse - Adult students & parents only */}
             <Route path="/tutors" element={
               <ProtectedRoute allowedRoles={['student', 'parent']}>
-                <Tutors />
+                <AdultStudentRoute>
+                  <Tutors />
+                </AdultStudentRoute>
               </ProtectedRoute>
             } />
-            
+
             <Route path="/tutors/:id" element={
               <ProtectedRoute allowedRoles={['student', 'parent']}>
-                <TutorProfile />
+                <AdultStudentRoute>
+                  <TutorProfile />
+                </AdultStudentRoute>
               </ProtectedRoute>
             } />
             
@@ -77,7 +106,13 @@ const App = () => (
                 <TutorDashboard />
               </ProtectedRoute>
             } />
-            
+
+            <Route path="/dashboard/students" element={
+              <ProtectedRoute allowedRoles={['tutor']}>
+                <TutorStudents />
+              </ProtectedRoute>
+            } />
+
             <Route path="/dashboard/parent" element={
               <ProtectedRoute allowedRoles={['parent']}>
                 <ParentDashboard />
@@ -103,10 +138,25 @@ const App = () => (
               </ProtectedRoute>
             } />
             
-            {/* Booking Routes */}
+            {/* Lessons Routes - All students */}
+            <Route path="/lessons" element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <Lessons />
+              </ProtectedRoute>
+            } />
+
+            <Route path="/lessons/:subject" element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <SubjectLessons />
+              </ProtectedRoute>
+            } />
+
+            {/* Booking Routes - Adult students & parents only */}
             <Route path="/bookings" element={
               <ProtectedRoute allowedRoles={['student', 'parent']}>
-                <StudentBookings />
+                <AdultStudentRoute>
+                  <StudentBookings />
+                </AdultStudentRoute>
               </ProtectedRoute>
             } />
             

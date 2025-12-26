@@ -6,10 +6,24 @@ export interface UpdateUserData {
   photoURL?: string;
   bio?: string;
   subjects?: Subject[];
+  enrolledSubjects?: Subject[];
+  examBoards?: Record<string, string>;
 }
 
 export interface TutorsResponse {
   tutors: User[];
+}
+
+export interface CreateChildData {
+  email: string;
+  password: string;
+  displayName: string;
+  dateOfBirth: string;
+}
+
+export interface CreateChildResponse {
+  message: string;
+  child: User;
 }
 
 export const usersApi = {
@@ -26,7 +40,7 @@ export const usersApi = {
     const queryParams = new URLSearchParams();
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.offset) queryParams.append('offset', params.offset.toString());
-    
+
     const query = queryParams.toString();
     return apiRequest<TutorsResponse>(`/v1/users/tutors/all${query ? `?${query}` : ''}`);
   },
@@ -34,3 +48,9 @@ export const usersApi = {
   getTutorsBySubject: (subject: Subject) =>
     apiRequest<TutorsResponse>(`/v1/users/tutors/subject/${subject}`)
 };
+
+// Convenience helper functions for easier imports
+export const getUserProfile = (id: string) => usersApi.getById(id);
+
+export const updateUserProfile = (id: string, data: UpdateUserData) =>
+  usersApi.update(id, data);
