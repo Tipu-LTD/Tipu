@@ -4,7 +4,24 @@
       "Bash(npm run dev:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(git -C /Users/ethan/Programming/WebDev/Tipu/Tipu-Mono ls-files:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(wc:*)",
+      "Bash(git -C /Users/ethan/Programming/WebDev/Tipu/Tipu-Mono log --all --full-history -- \"**/.env\" \"**/.env.local\")",
+      "Bash(git ls-tree:*)",
+      "Bash(firebase projects:list:*)",
+      "Bash(npm install:*)",
+      "Bash(kill:*)",
+      "Bash(chmod:*)",
+      "Bash(./test-security-fixes.sh)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(./test-authenticated-security.sh:*)",
+      "Bash(node -e:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }
