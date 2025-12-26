@@ -10,9 +10,7 @@ export const getStripe = () => {
       throw new Error('Stripe publishable key is not configured. Please set VITE_STRIPE_PUBLISHABLE_KEY in your environment variables.');
     }
 
-    stripePromise = loadStripe(publishableKey, {
-      apiVersion: '2025-12-15'  // Match backend API version
-    });
+    stripePromise = loadStripe(publishableKey);
   }
 
   return stripePromise;
